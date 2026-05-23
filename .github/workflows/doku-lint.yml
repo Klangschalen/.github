@@ -1,0 +1,103 @@
+name: Doku-Lint (zentral, wiederverwendbar)
+
+# Reusable Workflow - wird von anderen Repos per `uses:` eingebunden.
+# Beispiel-Aufruf in einem Repo:
+#
+#   jobs:
+#     lint:
+#       uses: Klangschalen/.github/.github/workflows/doku-lint.yml@main
+#       with:
+#         pflicht_dateien: "README.md,LICENSE,CHANGELOG.md,..."
+
+on:
+  workflow_call:
+    inputs:
+      pflicht_dateien:
+        description: "Komma-getrennte Liste der Pflicht-Dateien"
+        type: string
+        default: "README.md,LICENSE,CHANGELOG.md,STATUS.md,CONTRIBUTING.md,SECURITY.md,.editorconfig,.gitignore"
+      warn_only:
+        description: "Wenn true, nur Warnung statt Fehler"
+        type: boolean
+        default: true
+
+jobs:
+  pruefen:
+    name: Doku-Lint Pruefung
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gate 1 - Pflicht-Dateien vorhanden
+        shell: bash
+        run: |
+          set -e
+          IFS=',' read -ra files <<< "${{ inputs.pflicht_dateien }}"
+          missing=()
+          present=()
+          for f in "${files[@]}"; do
+            if [ -f "$f" ]; then
+              present+=("$f")
+            else
+              missing+=("$f")
+            fi
+          done
+          echo "Vorhanden (${#present[@]}): ${present[*]}"
+          echo "Fehlen   (${#missing[@]}): ${missing[*]:-keine}"
+          if [ ${#missing[@]} -gt 0 ]; then
+            if [ "${{ inputs.warn_only }}" = "true" ]; then
+              echo "::warning::Fehlende Pflicht-Dateien: ${missing[*]}"
+            else
+              echo "::error::Fehlende Pflicht-Dateien: ${missing[*]}"
+              exit 1
+            fi
+          fi
+
+      - name: Gate 2 - CHANGELOG-Touch bei Code-Aenderung (nur Pull Requests)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -e
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git fetch origin "$base" --depth=50 || true
+          changed=$(git diff --name-only "$base"..."$head" || git diff --name-only HEAD~1)
+          echo "Geaenderte Dateien:"
+          echo "$changed"
+          code_changed=$(echo "$changed" | grep -E '\.(php|py|js|ts|sh|yml|yaml)$' || true)
+          if [ -n "$code_changed" ]; then
+            if echo "$changed" | grep -qE '^CHANGELOG\.md$'; then
+              echo "OK - CHANGELOG.md ist mit beruehrt"
+            else
+              msg="Code-Aenderung ohne CHANGELOG-Touch: $code_changed"
+              if [ "${{ inputs.warn_only }}" = "true" ]; then
+                echo "::warning::$msg"
+              else
+                echo "::error::$msg"
+                exit 1
+              fi
+            fi
+          else
+            echo "Keine Code-Aenderung im PR, CHANGELOG-Touch nicht noetig."
+          fi
+
+      - name: Gate 3 - Conventional-Commit-Format des letzten Commits
+        shell: bash
+        run: |
+          set -e
+          msg=$(git log -1 --pretty=%s)
+          echo "Letzter Commit-Titel: $msg"
+          if echo "$msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|build|ci|revert)(\([a-z0-9-]+\))?!?:'; then
+            echo "OK - Conventional Commit"
+          else
+            warn="Commit-Titel nicht Conventional: '$msg' (erwartet: feat:/fix:/docs:/...)"
+            if [ "${{ inputs.warn_only }}" = "true" ]; then
+              echo "::warning::$warn"
+            else
+              echo "::error::$warn"
+              exit 1
+            fi
+          fi
