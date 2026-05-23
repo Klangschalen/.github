@@ -1,13 +1,22 @@
 name: Doku-Lint (zentral, wiederverwendbar)
 
 # Reusable Workflow - wird von anderen Repos per `uses:` eingebunden.
-# Beispiel-Aufruf in einem Repo:
+# Beispiel-Aufruf im Caller-Repo:
 #
+#   permissions:
+#     contents: read
 #   jobs:
 #     lint:
-#       uses: Klangschalen/.github/.github/workflows/doku-lint.yml@main
+#       uses: Klangschalen/.github/.github/workflows/doku-lint.yml@<SHA>
 #       with:
 #         pflicht_dateien: "README.md,LICENSE,CHANGELOG.md,..."
+#       permissions:
+#         contents: read
+#       secrets: inherit
+#
+# WICHTIG: Caller MUSS `secrets: inherit` setzen, sonst kommt der GITHUB_TOKEN
+# nicht beim cross-org Reusable-Workflow an (actions/checkout schlaegt sonst
+# mit "could not read Username" fehl).
 
 on:
   workflow_call:
@@ -21,15 +30,22 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: read
+
 jobs:
   pruefen:
     name: Doku-Lint Pruefung
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # SHA-Pin auf v6.0.2 (Node 24 ready, vermeidet Deprecation-Warning 2026-06-02)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
+          token: ${{ github.token }}
 
       - name: Gate 1 - Pflicht-Dateien vorhanden
         shell: bash
