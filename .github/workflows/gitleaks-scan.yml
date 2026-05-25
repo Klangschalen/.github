@@ -1,0 +1,83 @@
+# Klangschalen Reusable Workflow: gitleaks-scan
+#
+# Sucht im Repo nach versehentlich eingecheckten Secrets (API-Keys, Passwoerter,
+# Tokens). Aufrufbar via `workflow_call` aus allen Klangschalen-Repos.
+#
+# SOTA-Quelle: https://github.com/Klangschalen/claude-config/blob/master/docs/sota/gitleaks-installation-2026-05-24.md
+# Empfehlung: Weg C (GitHub-Action, ICE 6.48 MUST) plus Weg A (Chocolatey,
+# ICE 4.32 SHOULD) parallel.
+#
+# Caller-Beispiel (in jedem Klangschalen-Repo unter
+# `.github/workflows/security-scan.yml`):
+#
+#   name: Security
+#   on:
+#     pull_request:
+#       branches: [main, master]
+#     push:
+#       branches: [main, master]
+#   jobs:
+#     gitleaks:
+#       uses: Klangschalen/.github/.github/workflows/gitleaks-scan.yml@main
+#       secrets: inherit
+#
+# Anlass: ICE 6.48 MUST aus
+# `~/.claude/docs/sota/gitleaks-installation-2026-05-24.md` Abschnitt 5.
+
+name: gitleaks-scan (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      gitleaks-version:
+        description: gitleaks-Action-Version Pin (default v2)
+        type: string
+        required: false
+        default: "v2"
+      fail-on-detection:
+        description: Job rot machen wenn Secrets gefunden werden (default true)
+        type: boolean
+        required: false
+        default: true
+      config-path:
+        description: Pfad zu .gitleaks.toml im Caller-Repo (leer = Default-Rules)
+        type: string
+        required: false
+        default: ""
+    secrets:
+      GITLEAKS_LICENSE:
+        description: Optionale Org-Lizenz (nur wenn das Free-Limit erreicht ist)
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    name: gitleaks-scan
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          # Volle History noetig damit gitleaks alle Commits scannen kann
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # GITHUB_TOKEN nicht manuell setzen - die Action holt es selbst.
+          # GITLEAKS_LICENSE nur falls die Free-Quote nicht reicht.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # Default-Config nutzen wenn config-path leer ist
+          GITLEAKS_CONFIG: ${{ inputs.config-path }}
+          # Failure-Verhalten steuerbar machen
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+          GITLEAKS_ENABLE_SUMMARY: "true"
+
+      - name: Fail wenn Secrets gefunden
+        if: ${{ failure() && inputs.fail-on-detection == false }}
+        run: |
+          echo "::warning::gitleaks hat Funde, fail-on-detection ist false -> Job bleibt gruen"
+          exit 0
