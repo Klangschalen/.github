@@ -66,6 +66,12 @@ jobs:
 
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
+        # Wenn fail-on-detection false ist: Step darf failen, Job bleibt gruen.
+        # Wenn true: Step-Fail -> Job-Fail (Default-Verhalten).
+        # Fix 2026-05-25: Vorheriger "Fail wenn Secrets gefunden"-Step mit
+        # `if: failure() && exit 0` konnte den Job-Status nicht mehr ueberschreiben
+        # (GitHub Actions setzt den Job auf failed sobald ein Step failure ist).
+        continue-on-error: ${{ inputs.fail-on-detection == false }}
         env:
           # GITHUB_TOKEN ist seit gitleaks-action v2 Pflicht fuer Pull-Request-Scans.
           # Quelle: https://github.com/gitleaks/gitleaks-action#-announcement
@@ -77,9 +83,3 @@ jobs:
           # Failure-Verhalten steuerbar machen
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
           GITLEAKS_ENABLE_SUMMARY: "true"
-
-      - name: Fail wenn Secrets gefunden
-        if: ${{ failure() && inputs.fail-on-detection == false }}
-        run: |
-          echo "::warning::gitleaks hat Funde, fail-on-detection ist false -> Job bleibt gruen"
-          exit 0
