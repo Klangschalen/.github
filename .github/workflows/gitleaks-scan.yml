@@ -67,7 +67,9 @@ jobs:
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
-          # GITHUB_TOKEN nicht manuell setzen - die Action holt es selbst.
+          # GITHUB_TOKEN ist seit gitleaks-action v2 Pflicht fuer Pull-Request-Scans.
+          # Quelle: https://github.com/gitleaks/gitleaks-action#-announcement
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE nur falls die Free-Quote nicht reicht.
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           # Default-Config nutzen wenn config-path leer ist
