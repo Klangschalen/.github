@@ -23,6 +23,17 @@
 #
 # Anlass: ICE 6.48 MUST aus
 # `~/.claude/docs/sota/gitleaks-installation-2026-05-24.md` Abschnitt 5.
+#
+# Fix 2026-05-26: `fail-on-detection: false` greift bisher nicht. Ursache:
+# gitleaks-action@v2 setzt Step-Conclusion=failure bei Findings; GitHub
+# leitet das auf Job-Conclusion=failure ab, auch wenn `continue-on-error: true`
+# den Workflow-Abbruch verhindert. Caller bekommen dadurch trotzdem
+# rote-Mail-Notifications.
+#
+# Fix-Strategie: gitleaks-action durch direkten gitleaks-CLI-Aufruf ersetzen.
+# Exit-Code wird in Bash kontrolliert, Step-Conclusion bleibt sauber. Bei
+# fail-on-detection=false wird das Skript NIE mit Fehler beendet, bei =true
+# nur wenn Findings da sind.
 
 name: gitleaks-scan (reusable)
 
@@ -30,23 +41,23 @@ on:
   workflow_call:
     inputs:
       gitleaks-version:
-        description: gitleaks-Action-Version Pin (default v2)
+        description: gitleaks-CLI-Version Pin (default 8.21.2 - getestet 2026-05-26)
         type: string
         required: false
-        default: "v2"
+        default: "8.21.2"
       fail-on-detection:
         description: Job rot machen wenn Secrets gefunden werden (default true)
         type: boolean
         required: false
         default: true
       config-path:
-        description: Pfad zu .gitleaks.toml im Caller-Repo (leer = Default-Rules)
+        description: Pfad zu .gitleaks.toml im Caller-Repo (leer = .gitleaks.toml im Repo-Root)
         type: string
         required: false
         default: ""
     secrets:
       GITLEAKS_LICENSE:
-        description: Optionale Org-Lizenz (nur wenn das Free-Limit erreicht ist)
+        description: "Deprecated: nicht mehr benoetigt seit CLI-Aufruf"
         required: false
 
 permissions:
@@ -64,22 +75,98 @@ jobs:
           # Volle History noetig damit gitleaks alle Commits scannen kann
           fetch-depth: 0
 
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        # Wenn fail-on-detection false ist: Step darf failen, Job bleibt gruen.
-        # Wenn true: Step-Fail -> Job-Fail (Default-Verhalten).
-        # Fix 2026-05-25: Vorheriger "Fail wenn Secrets gefunden"-Step mit
-        # `if: failure() && exit 0` konnte den Job-Status nicht mehr ueberschreiben
-        # (GitHub Actions setzt den Job auf failed sobald ein Step failure ist).
-        continue-on-error: ${{ inputs.fail-on-detection == false }}
-        env:
-          # GITHUB_TOKEN ist seit gitleaks-action v2 Pflicht fuer Pull-Request-Scans.
-          # Quelle: https://github.com/gitleaks/gitleaks-action#-announcement
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # GITLEAKS_LICENSE nur falls die Free-Quote nicht reicht.
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-          # Default-Config nutzen wenn config-path leer ist
-          GITLEAKS_CONFIG: ${{ inputs.config-path }}
-          # Failure-Verhalten steuerbar machen
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
-          GITLEAKS_ENABLE_SUMMARY: "true"
+      - name: Install gitleaks CLI
+        id: install
+        run: |
+          set -euo pipefail
+          V="${{ inputs.gitleaks-version }}"
+          URL="https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz"
+          echo "Downloading $URL"
+          curl -fsSL "$URL" -o /tmp/gitleaks.tgz
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Run gitleaks (immer exit 0 - exit-code wird unten kontrolliert)
+        id: gitleaks
+        shell: bash
+        run: |
+          set -uo pipefail
+          ARGS=(detect --source . --redact -v --no-banner)
+          ARGS+=(--report-format sarif --report-path results.sarif)
+          # exit-code 0 = nie failen, wir kontrollieren das selbst
+          ARGS+=(--exit-code 0)
+
+          CONFIG_PATH="${{ inputs.config-path }}"
+          # Auto-detect: wenn .gitleaks.toml im Repo-Root existiert, nutzen
+          if [[ -z "$CONFIG_PATH" && -f ".gitleaks.toml" ]]; then
+            CONFIG_PATH=".gitleaks.toml"
+          fi
+          if [[ -n "$CONFIG_PATH" && -f "$CONFIG_PATH" ]]; then
+            ARGS+=(--config "$CONFIG_PATH")
+            echo "Using config: $CONFIG_PATH"
+          else
+            echo "Using gitleaks default rules"
+          fi
+
+          gitleaks "${ARGS[@]}"
+
+          if [[ -f results.sarif ]]; then
+            LEAKS=$(jq '[.runs[].results[]] | length' results.sarif)
+          else
+            LEAKS=0
+          fi
+          echo "leaks=$LEAKS" >> "$GITHUB_OUTPUT"
+          echo "Found leaks: $LEAKS"
+
+      - name: Job-Summary schreiben
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          LEAKS="${{ steps.gitleaks.outputs.leaks || '0' }}"
+          {
+            echo "# Gitleaks-Scan: $LEAKS Findings"
+            echo ""
+            echo "- Repo: \`${{ github.repository }}\`"
+            echo "- Branch: \`${{ github.ref_name }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- fail-on-detection: \`${{ inputs.fail-on-detection }}\`"
+            echo ""
+            if [[ -f results.sarif && "$LEAKS" -gt 0 ]]; then
+              echo "## Top 20 Findings"
+              echo ""
+              echo "| Rule | File | Line |"
+              echo "|------|------|------|"
+              jq -r '[.runs[].results[]] | .[0:20] | .[] |
+                "| \(.ruleId) | \(.locations[0].physicalLocation.artifactLocation.uri) | \(.locations[0].physicalLocation.region.startLine) |"' \
+                results.sarif
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Artifact upload (SARIF)
+        if: always() && hashFiles('results.sarif') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-results.sarif
+          path: results.sarif
+          retention-days: 30
+
+      - name: Fail wenn Findings + fail-on-detection true
+        if: |
+          inputs.fail-on-detection == true &&
+          steps.gitleaks.outputs.leaks != '0' &&
+          steps.gitleaks.outputs.leaks != ''
+        shell: bash
+        run: |
+          echo "::error::Gitleaks fand ${{ steps.gitleaks.outputs.leaks }} Secrets - Job wird auf rot gesetzt (fail-on-detection=true)"
+          exit 1
+
+      - name: Hinweis wenn Findings + fail-on-detection false
+        if: |
+          inputs.fail-on-detection == false &&
+          steps.gitleaks.outputs.leaks != '0' &&
+          steps.gitleaks.outputs.leaks != ''
+        shell: bash
+        run: |
+          echo "::warning::Gitleaks fand ${{ steps.gitleaks.outputs.leaks }} Secrets - fail-on-detection=false, Job bleibt gruen. SARIF im Artifact, Summary mit Top-20-Findings."
