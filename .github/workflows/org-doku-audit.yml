@@ -1,0 +1,68 @@
+name: Org Doku Audit
+
+# =================================================================
+# Naechtlicher org-weiter Doku-Audit ueber ALLE Klangschalen-Repos.
+#
+# Prueft pro Repo, ob die Pflicht-Dokumentationsdateien existieren,
+# und postet EINEN Sammelbericht als Issue in diesem Repo
+# (Klangschalen/.github). Das Issue wird bei jedem Lauf aktualisiert
+# statt neu erstellt (immer derselbe Titel + Marker).
+#
+# Token: braucht Lese-Zugriff auf alle Org-Repos + Issue-Schreibrecht hier.
+#   - Bevorzugt Secret ORG_AUDIT_TOKEN (Fine-grained PAT: Contents:read
+#     org-weit, Issues:write auf .github).
+#   - Faellt auf GITHUB_TOKEN zurueck; der sieht aber nur dieses Repo, daher
+#     ist ORG_AUDIT_TOKEN fuer den vollen org-weiten Audit noetig.
+# =================================================================
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # taeglich 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  audit:
+    name: Doku-Audit ueber alle Repos
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Selbsttest (Bericht-Logik)
+        run: python3 scripts/test_org_doku_audit.py
+
+      - name: Audit ausfuehren
+        env:
+          GH_TOKEN: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/org_doku_audit.py --org Klangschalen --out report.md
+          echo "----- Bericht -----"
+          cat report.md
+
+      - name: Sammelbericht als Issue posten/aktualisieren
+        env:
+          GH_TOKEN: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="Org Doku-Audit (automatisch)"
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" \
+            --state open --search "in:title $TITLE" \
+            --json number,title --jq \
+            ".[] | select(.title==\"$TITLE\") | .number" | head -1)
+          if [ -n "$EXISTING" ]; then
+            echo "Aktualisiere Issue #$EXISTING"
+            gh issue edit "$EXISTING" --repo "${{ github.repository }}" \
+              --body-file report.md
+          else
+            echo "Erstelle neues Issue"
+            gh issue create --repo "${{ github.repository }}" \
+              --title "$TITLE" --body-file report.md
+          fi
