@@ -20,15 +20,26 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-REQUIRED_FILES = [
+# Zweistufige Pflichtliste (Frank 2026-06-08): nicht jede fehlende Datei ist gleich
+# wichtig. KERN = Doku-Substanz + Aktualitaet; ihr Fehlen ist echter Doku-Drift und
+# faerbt den Bericht GELB. HYGIENE = einmal-anlegen-und-fertig (Lizenz, Security-Policy,
+# Editor-/Git-Settings); ihr Fehlen wird gezaehlt und gezeigt, faerbt den Bericht aber
+# NICHT gelb. Grund: LICENSE/SECURITY/.editorconfig fehlten org-weit in ~27 Repos und
+# erzeugten so 80 von 137 "Luecken" - ein Dauer-GELB, das den Blick fuer echten Drift
+# abstumpft (Alarm-Muedigkeit). KERN haelt das Signal scharf.
+KERN_FILES = [
     "README.md",
     "CHANGELOG.md",
     "STATUS.md",
+]
+HYGIENE_FILES = [
     "LICENSE",
     "SECURITY.md",
     ".gitignore",
     ".editorconfig",
 ]
+# Rueckwaerts-kompatibel: collect_results + Aufrufer pruefen weiter ALLE Dateien.
+REQUIRED_FILES = KERN_FILES + HYGIENE_FILES
 
 # Drift = STATUS.md hinkt dem Code hinterher. Praesenz allein reicht nicht: eine
 # alte STATUS.md bei +68 Commits ist "vorhanden", aber wertlos. Diese zweite
@@ -90,6 +101,28 @@ def count_drift(drift: dict, threshold: int = DRIFT_THRESHOLD) -> int:
     )
 
 
+def count_kern_gap_repos(results: dict, kern_files: list[str] = KERN_FILES) -> int:
+    """Repos, denen mindestens eine KERN-Doku-Datei (README/CHANGELOG/STATUS) fehlt.
+
+    Genau diese Zahl entscheidet GELB vs GRUEN - Hygiene-Luecken zaehlen hier NICHT mit.
+    """
+    return sum(
+        1
+        for files in results.values()
+        if any(not files.get(name) for name in kern_files)
+    )
+
+
+def count_hygiene_gaps(results: dict, hygiene_files: list[str] = HYGIENE_FILES) -> int:
+    """Gesamtzahl fehlender Hygiene-Dateien (nachrangig, faerbt den Bericht nicht gelb)."""
+    return sum(
+        1
+        for files in results.values()
+        for name in hygiene_files
+        if not files.get(name)
+    )
+
+
 def build_report(
     results: dict[str, dict[str, bool]],
     required_files: list[str],
@@ -104,44 +137,51 @@ def build_report(
     """
     stats = summarize(results)
     drift_count = count_drift(drift) if drift else 0
-    has_gap = stats["repos_incomplete"] > 0 or drift_count > 0
+    kern_gap_repos = count_kern_gap_repos(results)
+    hygiene_gaps = count_hygiene_gaps(results)
+    # GELB nur bei echtem Doku-Drift: fehlende KERN-Datei oder veraltete STATUS.md.
+    # Hygiene-Luecken (Lizenz etc.) zaehlen bewusst NICHT in die Ampel.
+    has_gap = kern_gap_repos > 0 or drift_count > 0
     health = "GELB" if has_gap else "GRUEN"
 
     short = {"README.md": "READ", "CHANGELOG.md": "CHLOG", "STATUS.md": "STAT",
              "LICENSE": "LIC", "SECURITY.md": "SEC", ".gitignore": "GIT",
              ".editorconfig": "EDIT"}
     header_cells = [short.get(name, name) for name in required_files]
+    kern_set = set(KERN_FILES)
 
     lines = [
         "<!-- org-doku-audit -->",
         f"# [{health}] Org Doku-Audit {generated_at[:10]}",
         "",
         f"**Repos geprueft:** {stats['repos_total']}  ",
-        f"**Vollstaendig:** {stats['repos_complete']}  ",
-        f"**Mit Luecken:** {stats['repos_incomplete']}  ",
-        f"**Fehlende Dateien gesamt:** {stats['missing_files_total']}",
+        f"**Repos mit KERN-Luecke (README/CHANGELOG/STATUS):** {kern_gap_repos}  ",
     ]
     if drift is not None:
-        lines.append(f"**STATUS.md veraltet (>{DRIFT_THRESHOLD} Commits seit Stand):** {drift_count}")
+        lines.append(f"**STATUS.md veraltet (>{DRIFT_THRESHOLD} Commits seit Stand):** {drift_count}  ")
     lines += [
+        f"**Hygiene-Luecken (LICENSE/SECURITY/.gitignore/.editorconfig, nachrangig):** {hygiene_gaps}",
         "",
         "Spalten: " + " · ".join(f"`{short.get(n, n)}`={n}" for n in required_files),
+        "> Fett = KERN (faerbt gelb). Hygiene-Spalten sind nachrangig.",
         "",
     ]
 
     drift_header = " DRIFT |" if drift is not None else ""
     drift_sep = ":--:|" if drift is not None else ""
     lines += [
-        "| Repo | " + " | ".join(header_cells) + " | Luecken |" + drift_header,
-        "|---|" + "|".join([":--:"] * len(required_files)) + "|:--:|" + drift_sep,
+        "| Repo | " + " | ".join(header_cells) + " | KERN-fehlt | Hyg-fehlt |" + drift_header,
+        "|---|" + "|".join([":--:"] * len(required_files)) + "|:--:|:--:|" + drift_sep,
     ]
 
     for repo in sorted(results):
         files = results[repo]
         cells = ["OK" if files.get(name) else "**X**" for name in required_files]
-        gaps = sum(1 for name in required_files if not files.get(name))
-        gap_label = "—" if gaps == 0 else f"**{gaps}**"
-        row = f"| `{repo}` | " + " | ".join(cells) + f" | {gap_label} |"
+        kern_gaps = sum(1 for name in KERN_FILES if not files.get(name))
+        hyg_gaps = sum(1 for name in HYGIENE_FILES if not files.get(name))
+        kern_label = "—" if kern_gaps == 0 else f"**{kern_gaps}**"
+        hyg_label = "—" if hyg_gaps == 0 else str(hyg_gaps)
+        row = f"| `{repo}` | " + " | ".join(cells) + f" | {kern_label} | {hyg_label} |"
         if drift is not None:
             info = drift.get(repo, {})
             row += f" {drift_cell(info.get('commits_since'))} |"
@@ -154,7 +194,8 @@ def build_report(
     )
     lines += [
         "",
-        "> `OK` = vorhanden · `X` = fehlt" + drift_legend + ". Quelle der Pflichtliste: "
+        "> `OK` = vorhanden · `X` = fehlt · `KERN-fehlt` faerbt gelb, `Hyg-fehlt` nicht"
+        + drift_legend + ". Quelle der Pflichtliste: "
         "`CHECK-STANDARD.md` bzw. `doku-lint.yml` in `Klangschalen/.github`.",
         "",
         f"*Automatisch erzeugt am {generated_at} von `org-doku-audit.yml`.*",
@@ -270,9 +311,9 @@ def main() -> int:
     print(report)
     print(
         f"Audit: {stats['repos_total']} Repos, "
-        f"{stats['repos_incomplete']} mit Luecken, "
-        f"{stats['missing_files_total']} fehlende Dateien, "
-        f"{count_drift(drift)} mit veralteter STATUS.md.",
+        f"{count_kern_gap_repos(results)} mit KERN-Luecke, "
+        f"{count_drift(drift)} mit veralteter STATUS.md, "
+        f"{count_hygiene_gaps(results)} Hygiene-Luecken (nachrangig).",
         file=sys.stderr,
     )
     return 0

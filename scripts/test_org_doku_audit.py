@@ -106,6 +106,59 @@ def test_build_report_without_drift_is_backward_compatible() -> None:
     assert "[GRUEN]" in report
 
 
+# --- KERN vs HYGIENE (Frank 2026-06-08): nur KERN-Luecken faerben gelb ---
+
+def test_only_hygiene_gap_stays_green() -> None:
+    # KERN (README/CHANGELOG/STATUS) vollstaendig, nur LICENSE+SECURITY fehlen -> GRUEN.
+    files = {name: True for name in audit.REQUIRED_FILES}
+    files["LICENSE"] = False
+    files["SECURITY.md"] = False
+    results = {"repo-h": files}
+    report = audit.build_report(results, audit.REQUIRED_FILES, "2026-06-08T03:00:00Z")
+    assert "[GRUEN]" in report
+    assert "**X**" in report          # die Luecke wird trotzdem GEZEIGT
+    assert "Hygiene-Luecken" in report
+
+
+def test_kern_gap_is_yellow() -> None:
+    # Fehlende STATUS.md (KERN) -> GELB, auch wenn Hygiene komplett ist.
+    files = {name: True for name in audit.REQUIRED_FILES}
+    files["STATUS.md"] = False
+    results = {"repo-k": files}
+    report = audit.build_report(results, audit.REQUIRED_FILES, "2026-06-08T03:00:00Z")
+    assert "[GELB]" in report
+
+
+def test_count_kern_gap_repos_counts_only_kern() -> None:
+    results = {
+        "nur-hygiene-fehlt": {**{n: True for n in audit.REQUIRED_FILES},
+                              "LICENSE": False, ".editorconfig": False},
+        "kern-fehlt": {**{n: True for n in audit.REQUIRED_FILES}, "README.md": False},
+        "alles-da": {n: True for n in audit.REQUIRED_FILES},
+    }
+    assert audit.count_kern_gap_repos(results) == 1   # nur "kern-fehlt"
+
+
+def test_count_hygiene_gaps_counts_only_hygiene() -> None:
+    results = {
+        "r": {**{n: True for n in audit.REQUIRED_FILES},
+              "LICENSE": False, "SECURITY.md": False, "README.md": False},
+    }
+    # README ist KERN -> zaehlt hier NICHT mit; nur LICENSE+SECURITY = 2.
+    assert audit.count_hygiene_gaps(results) == 2
+
+
+def test_hygiene_gap_not_bold_in_table() -> None:
+    # Hyg-fehlt-Zelle darf NICHT fett sein (nachrangig); KERN-fehlt schon.
+    files = {name: True for name in audit.REQUIRED_FILES}
+    files["LICENSE"] = False
+    results = {"repo-h": files}
+    report = audit.build_report(results, audit.REQUIRED_FILES, "2026-06-08T03:00:00Z")
+    # In der Datenzeile steht " | 1 |" (Hyg-fehlt=1, nicht fett), kein "**1**".
+    assert "| 1 |" in report
+    assert "**1**" not in report
+
+
 def _run() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failures = 0
