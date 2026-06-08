@@ -30,6 +30,12 @@ REQUIRED_FILES = [
     ".editorconfig",
 ]
 
+# Drift = aktives Repo, dessen STATUS.md hinter dem Code herhinkt. Praesenz allein
+# reicht nicht: eine alte STATUS.md bei +68 Commits ist "vorhanden", aber wertlos.
+# Diese zweite Dimension faengt genau das (Anlass: claude-config 2026-06-08).
+DRIFT_THRESHOLD = 5   # Drift ab >N Commits seit letztem STATUS.md-Stand
+ACTIVE_DAYS = 7       # "aktiv" = pushed innerhalb der letzten N Tage
+
 
 def parse_repo_list(json_text: str) -> list[str]:
     """Liest `gh repo list --json name,isArchived`-Ausgabe; ueberspringt Archivierte."""
@@ -59,14 +65,45 @@ def summarize(results: dict[str, dict[str, bool]]) -> dict[str, int]:
     }
 
 
+def drift_cell(commits_since, active: bool, threshold: int = DRIFT_THRESHOLD) -> str:
+    """Tabellen-Label der STATUS-Drift-Spalte (reine Logik, ohne Netz testbar).
+
+    `commits_since is None`  -> STATUS.md fehlt/unbekannt (Praesenz-Spalte zeigt das).
+    inaktives Repo           -> kein Alarm (alte STATUS.md ist dann unkritisch).
+    > threshold              -> hervorgehobener Drift-Wert.
+    """
+    if commits_since is None or not active:
+        return "—"
+    if commits_since > threshold:
+        return f"**+{commits_since}**"
+    return f"+{commits_since}" if commits_since > 0 else "ok"
+
+
+def count_drift(drift: dict, threshold: int = DRIFT_THRESHOLD) -> int:
+    """Zaehlt aktive Repos, deren STATUS.md > threshold Commits hinterherhinkt."""
+    return sum(
+        1
+        for info in drift.values()
+        if info.get("active") and (info.get("commits_since") or 0) > threshold
+    )
+
+
 def build_report(
     results: dict[str, dict[str, bool]],
     required_files: list[str],
     generated_at: str,
+    drift: dict | None = None,
 ) -> str:
-    """Baut den Markdown-Sammelbericht (Ampel-Tabelle + Kennzahlen)."""
+    """Baut den Markdown-Sammelbericht (Ampel-Tabelle + Kennzahlen).
+
+    `drift` ist optional: ein dict {repo: {"active": bool, "commits_since": int|None}}.
+    Fehlt es (None), bleibt der Bericht wie zuvor (Praesenz-only, rueckwaerts-kompatibel).
+    Liegt es vor, kommt eine DRIFT-Spalte + Drift-Kennzahl dazu.
+    """
     stats = summarize(results)
-    health = "GRUEN" if stats["repos_incomplete"] == 0 else "GELB"
+    drift_count = count_drift(drift) if drift else 0
+    has_gap = stats["repos_incomplete"] > 0 or drift_count > 0
+    health = "GELB" if has_gap else "GRUEN"
 
     short = {"README.md": "READ", "CHANGELOG.md": "CHLOG", "STATUS.md": "STAT",
              "LICENSE": "LIC", "SECURITY.md": "SEC", ".gitignore": "GIT",
@@ -81,11 +118,20 @@ def build_report(
         f"**Vollstaendig:** {stats['repos_complete']}  ",
         f"**Mit Luecken:** {stats['repos_incomplete']}  ",
         f"**Fehlende Dateien gesamt:** {stats['missing_files_total']}",
+    ]
+    if drift is not None:
+        lines.append(f"**STATUS.md veraltet (aktiv, >{DRIFT_THRESHOLD} Commits):** {drift_count}")
+    lines += [
         "",
         "Spalten: " + " · ".join(f"`{short.get(n, n)}`={n}" for n in required_files),
         "",
-        "| Repo | " + " | ".join(header_cells) + " | Luecken |",
-        "|---|" + "|".join([":--:"] * len(required_files)) + "|:--:|",
+    ]
+
+    drift_header = " DRIFT |" if drift is not None else ""
+    drift_sep = ":--:|" if drift is not None else ""
+    lines += [
+        "| Repo | " + " | ".join(header_cells) + " | Luecken |" + drift_header,
+        "|---|" + "|".join([":--:"] * len(required_files)) + "|:--:|" + drift_sep,
     ]
 
     for repo in sorted(results):
@@ -93,11 +139,20 @@ def build_report(
         cells = ["OK" if files.get(name) else "**X**" for name in required_files]
         gaps = sum(1 for name in required_files if not files.get(name))
         gap_label = "—" if gaps == 0 else f"**{gaps}**"
-        lines.append(f"| `{repo}` | " + " | ".join(cells) + f" | {gap_label} |")
+        row = f"| `{repo}` | " + " | ".join(cells) + f" | {gap_label} |"
+        if drift is not None:
+            info = drift.get(repo, {})
+            row += f" {drift_cell(info.get('commits_since'), bool(info.get('active')))} |"
+        lines.append(row)
 
+    drift_legend = (
+        " · `DRIFT` = Commits seit letztem STATUS.md-Stand (nur aktive Repos; "
+        f"hervorgehoben ab >{DRIFT_THRESHOLD})"
+        if drift is not None else ""
+    )
     lines += [
         "",
-        "> `OK` = vorhanden · `X` = fehlt. Quelle der Pflichtliste: "
+        "> `OK` = vorhanden · `X` = fehlt" + drift_legend + ". Quelle der Pflichtliste: "
         "`CHECK-STANDARD.md` bzw. `doku-lint.yml` in `Klangschalen/.github`.",
         "",
         f"*Automatisch erzeugt am {generated_at} von `org-doku-audit.yml`.*",
@@ -151,6 +206,61 @@ def collect_results(org: str, repos: list[str], required_files: list[str]) -> di
     return results
 
 
+def _days_since(iso: str) -> int:
+    """Ganze Tage seit einem ISO-Datum; 9999 bei leer/unparsbar."""
+    if not iso:
+        return 9999
+    try:
+        when = datetime.strptime(iso[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return 9999
+    return (datetime.now(timezone.utc) - when).days
+
+
+def repo_meta(org: str, repo: str) -> tuple[str, str]:
+    """(pushed_at, default_branch) eines Repos; ("", "master") bei Fehler."""
+    raw = _gh(["api", f"repos/{org}/{repo}",
+               "--jq", "[.pushed_at, .default_branch] | @tsv"]).strip()
+    parts = raw.split("\t")
+    if len(parts) >= 2 and parts[1]:
+        return parts[0], parts[1]
+    return (parts[0] if parts else ""), "master"
+
+
+def status_last_commit_date(org: str, repo: str, branch: str) -> str | None:
+    """ISO-Datum des letzten STATUS.md-Commits auf dem Default-Branch; None wenn keins."""
+    raw = _gh(["api",
+               f"repos/{org}/{repo}/commits?path=STATUS.md&sha={branch}&per_page=1",
+               "--jq",
+               'if type=="array" then (.[0].commit.committer.date // "") else "" end']).strip()
+    return raw or None
+
+
+def commits_since(org: str, repo: str, branch: str, since_date: str) -> int:
+    """Commits auf dem Default-Branch seit `since_date`, ohne den STATUS-Commit selbst."""
+    raw = _gh(["api",
+               f"repos/{org}/{repo}/commits?sha={branch}&since={since_date}&per_page=100",
+               "--jq", "length"]).strip()
+    try:
+        count = int(raw or "0")
+    except ValueError:
+        count = 0
+    return max(0, count - 1)
+
+
+def collect_drift(org: str, repos: list[str]) -> dict:
+    """Erhebt pro Repo, ob die STATUS.md hinter dem Code herhinkt (nur aktive zaehlen spaeter)."""
+    drift: dict[str, dict] = {}
+    for repo in repos:
+        pushed, branch = repo_meta(org, repo)
+        active = _days_since(pushed) <= ACTIVE_DAYS
+        sdate = status_last_commit_date(org, repo, branch)
+        since = commits_since(org, repo, branch, sdate) if sdate else None
+        drift[repo] = {"active": active, "commits_since": since}
+        print(f"  drift: {repo} active={active} commits_since={since}", file=sys.stderr)
+    return drift
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--org", default="Klangschalen")
@@ -163,8 +273,9 @@ def main() -> int:
         return 1
 
     results = collect_results(args.org, repos, REQUIRED_FILES)
+    drift = collect_drift(args.org, repos)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    report = build_report(results, REQUIRED_FILES, generated_at)
+    report = build_report(results, REQUIRED_FILES, generated_at, drift=drift)
 
     with open(args.out, "w", encoding="utf-8") as handle:
         handle.write(report)
@@ -174,7 +285,8 @@ def main() -> int:
     print(
         f"Audit: {stats['repos_total']} Repos, "
         f"{stats['repos_incomplete']} mit Luecken, "
-        f"{stats['missing_files_total']} fehlende Dateien.",
+        f"{stats['missing_files_total']} fehlende Dateien, "
+        f"{count_drift(drift)} mit veralteter STATUS.md.",
         file=sys.stderr,
     )
     return 0
