@@ -59,37 +59,37 @@ def test_build_report_yellow_and_marks_gaps() -> None:
     assert "**2**" in report
 
 
-def test_drift_cell_active_over_threshold_is_highlighted() -> None:
-    assert audit.drift_cell(68, active=True, threshold=5) == "**+68**"
+def test_drift_cell_over_threshold_is_highlighted() -> None:
+    assert audit.drift_cell(68, threshold=5) == "**+68**"
 
 
-def test_drift_cell_active_under_threshold_not_highlighted() -> None:
-    assert audit.drift_cell(3, active=True, threshold=5) == "+3"
+def test_drift_cell_under_threshold_not_highlighted() -> None:
+    assert audit.drift_cell(3, threshold=5) == "+3"
 
 
-def test_drift_cell_inactive_repo_no_alarm() -> None:
-    # 99 Commits Drift, aber Repo seit Wochen nicht gepusht -> kein Alarm.
-    assert audit.drift_cell(99, active=False, threshold=5) == "—"
+def test_drift_cell_shown_regardless_of_push_age() -> None:
+    # Frank 2026-06-08: veraltete STATUS.md wird IMMER gezeigt, egal wie alt der Push.
+    assert audit.drift_cell(99, threshold=5) == "**+99**"
 
 
 def test_drift_cell_missing_status_is_neutral() -> None:
-    assert audit.drift_cell(None, active=True, threshold=5) == "—"
+    assert audit.drift_cell(None, threshold=5) == "—"
 
 
-def test_count_drift_only_active_over_threshold() -> None:
+def test_count_drift_counts_all_over_threshold() -> None:
     drift = {
-        "alt-aktiv": {"active": True, "commits_since": 68},   # zaehlt
-        "klein-aktiv": {"active": True, "commits_since": 2},  # unter Schwelle
-        "alt-inaktiv": {"active": False, "commits_since": 40},  # inaktiv
-        "ohne-status": {"active": True, "commits_since": None},  # keine STATUS.md
+        "alt": {"commits_since": 68},                 # zaehlt
+        "klein": {"commits_since": 2},                # unter Schwelle
+        "ruht-aber-veraltet": {"commits_since": 40},  # zaehlt JETZT auch (kein Aktiv-Filter)
+        "ohne-status": {"commits_since": None},       # keine STATUS.md
     }
-    assert audit.count_drift(drift, threshold=5) == 1
+    assert audit.count_drift(drift, threshold=5) == 2
 
 
 def test_build_report_with_drift_adds_column_and_metric() -> None:
     files = {name: True for name in audit.REQUIRED_FILES}
     results = {"repo-c": files}
-    drift = {"repo-c": {"active": True, "commits_since": 68}}
+    drift = {"repo-c": {"commits_since": 68}}
     report = audit.build_report(results, audit.REQUIRED_FILES,
                                 "2026-06-08T03:00:00Z", drift=drift)
     assert "DRIFT" in report
