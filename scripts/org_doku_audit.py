@@ -30,11 +30,14 @@ REQUIRED_FILES = [
     ".editorconfig",
 ]
 
-# Drift = aktives Repo, dessen STATUS.md hinter dem Code herhinkt. Praesenz allein
-# reicht nicht: eine alte STATUS.md bei +68 Commits ist "vorhanden", aber wertlos.
-# Diese zweite Dimension faengt genau das (Anlass: claude-config 2026-06-08).
+# Drift = STATUS.md hinkt dem Code hinterher. Praesenz allein reicht nicht: eine
+# alte STATUS.md bei +68 Commits ist "vorhanden", aber wertlos. Diese zweite
+# Dimension faengt genau das (Anlass: claude-config 2026-06-08).
+#
+# Bewusst KEINE "nur aktive Repos"-Grenze (Frank 2026-06-08): eine veraltete
+# STATUS.md ist veraltet, egal ob der letzte Push gestern oder vor 3 Wochen war.
+# Die Drift haengt allein an "Commits seit letztem STATUS.md-Stand", nicht am Push-Alter.
 DRIFT_THRESHOLD = 5   # Drift ab >N Commits seit letztem STATUS.md-Stand
-ACTIVE_DAYS = 7       # "aktiv" = pushed innerhalb der letzten N Tage
 
 
 def parse_repo_list(json_text: str) -> list[str]:
@@ -65,14 +68,13 @@ def summarize(results: dict[str, dict[str, bool]]) -> dict[str, int]:
     }
 
 
-def drift_cell(commits_since, active: bool, threshold: int = DRIFT_THRESHOLD) -> str:
+def drift_cell(commits_since, threshold: int = DRIFT_THRESHOLD) -> str:
     """Tabellen-Label der STATUS-Drift-Spalte (reine Logik, ohne Netz testbar).
 
     `commits_since is None`  -> STATUS.md fehlt/unbekannt (Praesenz-Spalte zeigt das).
-    inaktives Repo           -> kein Alarm (alte STATUS.md ist dann unkritisch).
-    > threshold              -> hervorgehobener Drift-Wert.
+    > threshold              -> hervorgehobener Drift-Wert (egal wie alt der Push).
     """
-    if commits_since is None or not active:
+    if commits_since is None:
         return "—"
     if commits_since > threshold:
         return f"**+{commits_since}**"
@@ -80,11 +82,11 @@ def drift_cell(commits_since, active: bool, threshold: int = DRIFT_THRESHOLD) ->
 
 
 def count_drift(drift: dict, threshold: int = DRIFT_THRESHOLD) -> int:
-    """Zaehlt aktive Repos, deren STATUS.md > threshold Commits hinterherhinkt."""
+    """Zaehlt Repos, deren STATUS.md > threshold Commits hinterherhinkt (ohne Aktiv-Grenze)."""
     return sum(
         1
         for info in drift.values()
-        if info.get("active") and (info.get("commits_since") or 0) > threshold
+        if (info.get("commits_since") or 0) > threshold
     )
 
 
@@ -96,7 +98,7 @@ def build_report(
 ) -> str:
     """Baut den Markdown-Sammelbericht (Ampel-Tabelle + Kennzahlen).
 
-    `drift` ist optional: ein dict {repo: {"active": bool, "commits_since": int|None}}.
+    `drift` ist optional: ein dict {repo: {"commits_since": int|None}}.
     Fehlt es (None), bleibt der Bericht wie zuvor (Praesenz-only, rueckwaerts-kompatibel).
     Liegt es vor, kommt eine DRIFT-Spalte + Drift-Kennzahl dazu.
     """
@@ -120,7 +122,7 @@ def build_report(
         f"**Fehlende Dateien gesamt:** {stats['missing_files_total']}",
     ]
     if drift is not None:
-        lines.append(f"**STATUS.md veraltet (aktiv, >{DRIFT_THRESHOLD} Commits):** {drift_count}")
+        lines.append(f"**STATUS.md veraltet (>{DRIFT_THRESHOLD} Commits seit Stand):** {drift_count}")
     lines += [
         "",
         "Spalten: " + " · ".join(f"`{short.get(n, n)}`={n}" for n in required_files),
@@ -142,12 +144,12 @@ def build_report(
         row = f"| `{repo}` | " + " | ".join(cells) + f" | {gap_label} |"
         if drift is not None:
             info = drift.get(repo, {})
-            row += f" {drift_cell(info.get('commits_since'), bool(info.get('active')))} |"
+            row += f" {drift_cell(info.get('commits_since'))} |"
         lines.append(row)
 
     drift_legend = (
-        " · `DRIFT` = Commits seit letztem STATUS.md-Stand (nur aktive Repos; "
-        f"hervorgehoben ab >{DRIFT_THRESHOLD})"
+        " · `DRIFT` = Commits seit letztem STATUS.md-Stand "
+        f"(hervorgehoben ab >{DRIFT_THRESHOLD}, unabhaengig vom Push-Alter)"
         if drift is not None else ""
     )
     lines += [
@@ -206,25 +208,10 @@ def collect_results(org: str, repos: list[str], required_files: list[str]) -> di
     return results
 
 
-def _days_since(iso: str) -> int:
-    """Ganze Tage seit einem ISO-Datum; 9999 bei leer/unparsbar."""
-    if not iso:
-        return 9999
-    try:
-        when = datetime.strptime(iso[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    except ValueError:
-        return 9999
-    return (datetime.now(timezone.utc) - when).days
-
-
-def repo_meta(org: str, repo: str) -> tuple[str, str]:
-    """(pushed_at, default_branch) eines Repos; ("", "master") bei Fehler."""
-    raw = _gh(["api", f"repos/{org}/{repo}",
-               "--jq", "[.pushed_at, .default_branch] | @tsv"]).strip()
-    parts = raw.split("\t")
-    if len(parts) >= 2 and parts[1]:
-        return parts[0], parts[1]
-    return (parts[0] if parts else ""), "master"
+def default_branch(org: str, repo: str) -> str:
+    """Default-Branch eines Repos; "master" bei Fehler."""
+    raw = _gh(["api", f"repos/{org}/{repo}", "--jq", ".default_branch"]).strip()
+    return raw or "master"
 
 
 def status_last_commit_date(org: str, repo: str, branch: str) -> str | None:
@@ -249,15 +236,14 @@ def commits_since(org: str, repo: str, branch: str, since_date: str) -> int:
 
 
 def collect_drift(org: str, repos: list[str]) -> dict:
-    """Erhebt pro Repo, ob die STATUS.md hinter dem Code herhinkt (nur aktive zaehlen spaeter)."""
+    """Erhebt pro Repo die STATUS.md-Drift (Commits seit letztem STATUS.md-Stand)."""
     drift: dict[str, dict] = {}
     for repo in repos:
-        pushed, branch = repo_meta(org, repo)
-        active = _days_since(pushed) <= ACTIVE_DAYS
+        branch = default_branch(org, repo)
         sdate = status_last_commit_date(org, repo, branch)
         since = commits_since(org, repo, branch, sdate) if sdate else None
-        drift[repo] = {"active": active, "commits_since": since}
-        print(f"  drift: {repo} active={active} commits_since={since}", file=sys.stderr)
+        drift[repo] = {"commits_since": since}
+        print(f"  drift: {repo} commits_since={since}", file=sys.stderr)
     return drift
 
 
