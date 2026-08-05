@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "sound-spirit": {
+      "source": {
+        "source": "github",
+        "repo": "Klangschalen/claude-config"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sound-spirit-core@sound-spirit": true
+  }
+}
