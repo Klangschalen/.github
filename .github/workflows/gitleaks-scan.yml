@@ -82,7 +82,9 @@ jobs:
           V="${{ inputs.gitleaks-version }}"
           URL="https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz"
           echo "Downloading $URL"
-          curl -fsSL "$URL" -o /tmp/gitleaks.tgz
+          # --retry-all-errors: auch Connection-Resets (curl exit 35) erneut versuchen,
+          # sonst macht ein transienter Netzfehler den Scheduled-Run rot
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "$URL" -o /tmp/gitleaks.tgz
           tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
           sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
