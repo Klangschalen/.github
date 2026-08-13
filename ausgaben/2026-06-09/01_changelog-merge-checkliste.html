@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHANGELOG-Nachruestung - Merge-Checkliste</title>
+<style>
+  :root { --ok:#16a34a; --ready:#2563eb; --blocked:#ea580c; --draft:#6b7280; --err:#dc2626; }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; margin:0; background:#f8fafc; color:#0f172a; }
+  .wrap { max-width:980px; margin:0 auto; padding:24px 16px 60px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  .stand { color:#64748b; font-size:.85rem; margin-bottom:20px; }
+  .progress-wrap { background:#e2e8f0; border-radius:999px; height:28px; overflow:hidden; margin:8px 0; }
+  .progress { height:100%; background:var(--ok); width:100%; transition:width .4s; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:.85rem; }
+  .counter { font-size:1.1rem; font-weight:600; margin:14px 0 4px; }
+  .banner { padding:12px 16px; border-radius:10px; font-weight:600; margin:14px 0 24px; }
+  .banner.ok { background:#dcfce7; color:#166534; }
+  .banner.todo { background:#fef9c3; color:#854d0e; }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  th,td { padding:10px 12px; text-align:left; border-bottom:1px solid #f1f5f9; font-size:.92rem; }
+  th { background:#f1f5f9; font-size:.78rem; text-transform:uppercase; letter-spacing:.03em; color:#475569; }
+  td.num { color:#94a3b8; width:36px; }
+  td.repo { font-family:ui-monospace,Menlo,Consolas,monospace; font-weight:600; }
+  td.chk { text-align:center; }
+  input[type=checkbox] { width:20px; height:20px; cursor:pointer; }
+  a { color:#2563eb; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:.78rem; font-weight:600; color:#fff; white-space:nowrap; }
+  .badge.merged { background:var(--ok); } .badge.ready { background:var(--ready); }
+  .badge.blocked { background:var(--blocked); } .badge.draft { background:var(--draft); }
+  .badge.err { background:var(--err); }
+  tr.merged { background:#f0fdf4; }
+  .card { background:#fff; border-radius:12px; padding:16px 20px; margin-top:22px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .card h2 { font-size:1.05rem; margin:0 0 10px; }
+  .card.warn { border-left:5px solid var(--blocked); }
+  .card.info { border-left:5px solid var(--ready); }
+  .card.gambio { border-left:5px solid var(--draft); }
+  ul { margin:6px 0; padding-left:20px; } li { margin:4px 0; }
+  code { background:#f1f5f9; padding:1px 6px; border-radius:5px; font-size:.85em; }
+  .reset { margin-top:10px; font-size:.8rem; color:#94a3b8; cursor:pointer; background:none; border:none; text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CHANGELOG-Nachruestung - Merge-Checkliste</h1>
+  <div class="stand">Echter GitHub-Status, gezogen am 2026-06-09 14:34 UTC. Neu erzeugbar mit
+    <code>python scripts/merge_checkliste_html.py</code>.</div>
+
+  <div class="counter"><span id="liveCount">19</span> / 19 gemerged</div>
+  <div class="progress-wrap"><div class="progress" id="bar">100%</div></div>
+  <div class="banner ok">Alle 19 CHANGELOG-PRs sind gemerged. Nichts vergessen.</div>
+
+  <table>
+    <thead><tr><th>#</th><th>Repository</th><th>Pull Request</th><th>Status (echt)</th><th>Haken</th></tr></thead>
+    <tbody>
+      <tr data-key=".github" class="merged">
+        <td class="num">1</td>
+        <td class="repo">.github</td>
+        <td><a href="https://github.com/Klangschalen/.github/pull/11" target="_blank" rel="noopener">PR #11 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo=".github"></td>
+      </tr>
+      <tr data-key="Gstack-" class="merged">
+        <td class="num">2</td>
+        <td class="repo">Gstack-</td>
+        <td><a href="https://github.com/Klangschalen/Gstack-/pull/8" target="_blank" rel="noopener">PR #8 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="Gstack-"></td>
+      </tr>
+      <tr data-key="adk-agents" class="merged">
+        <td class="num">3</td>
+        <td class="repo">adk-agents</td>
+        <td><a href="https://github.com/Klangschalen/adk-agents/pull/7" target="_blank" rel="noopener">PR #7 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="adk-agents"></td>
+      </tr>
+      <tr data-key="agent-templates" class="merged">
+        <td class="num">4</td>
+        <td class="repo">agent-templates</td>
+        <td><a href="https://github.com/Klangschalen/agent-templates/pull/6" target="_blank" rel="noopener">PR #6 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="agent-templates"></td>
+      </tr>
+      <tr data-key="content-engine" class="merged">
+        <td class="num">5</td>
+        <td class="repo">content-engine</td>
+        <td><a href="https://github.com/Klangschalen/content-engine/pull/7" target="_blank" rel="noopener">PR #7 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="content-engine"></td>
+      </tr>
+      <tr data-key="design-sound-spirit" class="merged">
+        <td class="num">6</td>
+        <td class="repo">design-sound-spirit</td>
+        <td><a href="https://github.com/Klangschalen/design-sound-spirit/pull/5" target="_blank" rel="noopener">PR #5 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="design-sound-spirit"></td>
+      </tr>
+      <tr data-key="klangschalen-analyse" class="merged">
+        <td class="num">7</td>
+        <td class="repo">klangschalen-analyse</td>
+        <td><a href="https://github.com/Klangschalen/klangschalen-analyse/pull/4" target="_blank" rel="noopener">PR #4 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="klangschalen-analyse"></td>
+      </tr>
+      <tr data-key="knowledge" class="merged">
+        <td class="num">8</td>
+        <td class="repo">knowledge</td>
+        <td><a href="https://github.com/Klangschalen/knowledge/pull/10" target="_blank" rel="noopener">PR #10 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="knowledge"></td>
+      </tr>
+      <tr data-key="life-design-app" class="merged">
+        <td class="num">9</td>
+        <td class="repo">life-design-app</td>
+        <td><a href="https://github.com/Klangschalen/life-design-app/pull/6" target="_blank" rel="noopener">PR #6 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="life-design-app"></td>
+      </tr>
+      <tr data-key="profihost-server" class="merged">
+        <td class="num">10</td>
+        <td class="repo">profihost-server</td>
+        <td><a href="https://github.com/Klangschalen/profihost-server/pull/6" target="_blank" rel="noopener">PR #6 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="profihost-server"></td>
+      </tr>
+      <tr data-key="projekt-board" class="merged">
+        <td class="num">11</td>
+        <td class="repo">projekt-board</td>
+        <td><a href="https://github.com/Klangschalen/projekt-board/pull/8" target="_blank" rel="noopener">PR #8 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="projekt-board"></td>
+      </tr>
+      <tr data-key="schnittstellen-doku" class="merged">
+        <td class="num">12</td>
+        <td class="repo">schnittstellen-doku</td>
+        <td><a href="https://github.com/Klangschalen/schnittstellen-doku/pull/6" target="_blank" rel="noopener">PR #6 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="schnittstellen-doku"></td>
+      </tr>
+      <tr data-key="security-monitoring" class="merged">
+        <td class="num">13</td>
+        <td class="repo">security-monitoring</td>
+        <td><a href="https://github.com/Klangschalen/security-monitoring/pull/7" target="_blank" rel="noopener">PR #7 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="security-monitoring"></td>
+      </tr>
+      <tr data-key="sf-analyse" class="merged">
+        <td class="num">14</td>
+        <td class="repo">sf-analyse</td>
+        <td><a href="https://github.com/Klangschalen/sf-analyse/pull/5" target="_blank" rel="noopener">PR #5 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="sf-analyse"></td>
+      </tr>
+      <tr data-key="shop-api-test" class="merged">
+        <td class="num">15</td>
+        <td class="repo">shop-api-test</td>
+        <td><a href="https://github.com/Klangschalen/shop-api-test/pull/7" target="_blank" rel="noopener">PR #7 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="shop-api-test"></td>
+      </tr>
+      <tr data-key="shop-tuner-dokumentation" class="merged">
+        <td class="num">16</td>
+        <td class="repo">shop-tuner-dokumentation</td>
+        <td><a href="https://github.com/Klangschalen/shop-tuner-dokumentation/pull/27" target="_blank" rel="noopener">PR #27 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="shop-tuner-dokumentation"></td>
+      </tr>
+      <tr data-key="weboffice" class="merged">
+        <td class="num">17</td>
+        <td class="repo">weboffice</td>
+        <td><a href="https://github.com/Klangschalen/weboffice/pull/7" target="_blank" rel="noopener">PR #7 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="weboffice"></td>
+      </tr>
+      <tr data-key="website-audit" class="merged">
+        <td class="num">18</td>
+        <td class="repo">website-audit</td>
+        <td><a href="https://github.com/Klangschalen/website-audit/pull/9" target="_blank" rel="noopener">PR #9 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="website-audit"></td>
+      </tr>
+      <tr data-key="zentrale" class="merged">
+        <td class="num">19</td>
+        <td class="repo">zentrale</td>
+        <td><a href="https://github.com/Klangschalen/zentrale/pull/71" target="_blank" rel="noopener">PR #71 oeffnen</a></td>
+        <td><span class="badge merged">Gemerged</span></td>
+        <td class="chk"><input type="checkbox" checked disabled data-repo="zentrale"></td>
+      </tr>
+    </tbody>
+  </table>
+  <button class="reset" onclick="if(confirm('Manuelle Haken zuruecksetzen?')){localStorage.removeItem('chlog-merge');location.reload();}">manuelle Haken zuruecksetzen</button>
+
+  <div class="card warn">
+    <h2>Sonderfall 1: adk-agents braucht Extra-Handgriff</h2>
+    <p><code>adk-agents</code> ist <b>BLOCKED</b> (Branch-Schutz). Normaler Merge scheitert.
+    Optionen: Branch-Schutz kurz lockern, Admin-Merge (<code>gh pr merge 7 --repo Klangschalen/adk-agents --squash --admin</code>),
+    oder bewusst auslassen. Diese Zeile bleibt rot/orange, bis das geklaert ist.</p>
+  </div>
+
+  <div class="card gambio">
+    <h2>Sonderfall 2: gambio-modul-content (kein PR moeglich)</h2>
+    <p>Das Repo <code>gambio-modul-content</code> ist ein <b>leeres Git-Repo</b> (kein Commit, kein Default-Branch),
+    deshalb gibt es hier keinen PR zum Abhaken. Frank-Entscheid: Repo entfernen, initialisieren
+    (README+CHANGELOG als ersten Commit) oder aus dem Audit-Scope nehmen. Steht in OFFENE-AUFGABEN.md.</p>
+  </div>
+
+  <div class="card info">
+    <h2>Was Claude nach dem Merge uebernimmt</h2>
+    <ul>
+      <li>Org-Doku-Audit neu ausloesen: <code>gh workflow run org-doku-audit.yml --repo Klangschalen/.github</code></li>
+      <li>Messen im Issue <a href="https://github.com/Klangschalen/.github/issues/7" target="_blank" rel="noopener">.github #7</a>:
+          KERN-Luecke-Repos sollten von <b>24 auf 21</b> fallen, CHLOG-Luecken von <b>20 auf 1</b> (nur gambio bleibt).</li>
+      <li>Ehrliche Grenze: nur 3 Repos (Gstack-, security-monitoring, shop-tuner-dokumentation) fallen ganz aus der
+          KERN-Liste - die anderen 16 vermissen zusaetzlich README oder STATUS und bleiben drin.</li>
+    </ul>
+  </div>
+</div>
+<script>
+  // Manuelle Haken (fuer den Fall, dass Frank selbst merged) in localStorage merken.
+  const KEY='chlog-merge';
+  const saved=JSON.parse(localStorage.getItem(KEY)||'{}');
+  document.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    const repo=cb.dataset.repo;
+    if(!cb.disabled && saved[repo]) cb.checked=true;
+    cb.addEventListener('change',()=>{
+      saved[repo]=cb.checked; localStorage.setItem(KEY,JSON.stringify(saved)); recount();
+    });
+  });
+  function recount(){
+    const all=[...document.querySelectorAll('input[type=checkbox]')];
+    const n=all.filter(c=>c.checked).length, t=all.length;
+    document.getElementById('liveCount').textContent=n;
+    const bar=document.getElementById('bar'), p=Math.round(n/t*100);
+    bar.style.width=p+'%'; bar.textContent=p+'%';
+  }
+  recount();
+</script>
+</body>
+</html>

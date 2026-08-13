@@ -1,0 +1,4 @@
+
+# Python-Nebenprodukte (nachgetragen 2026-08-13, lagen als ungesichert gemeldet)
+__pycache__/
+*.pyc
