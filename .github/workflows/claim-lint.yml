@@ -1,0 +1,131 @@
+name: Claim-Lint (zentral, wiederverwendbar)
+
+# Reusable Workflow - wird von anderen Repos per `uses:` eingebunden.
+#
+# Grund (2026-08-16, engineering-principles PR #12): eine Cloud-Session hat
+# "der gesamte Rueckstand ist geschlossen" behauptet, waehrend 3 von 6
+# Quellen nur eine Stichprobe statt vollstaendiger Pruefung durchlaufen
+# hatten. Der lokale PostToolUse-Hook, der genau das verhindert
+# (claude-config/hooks/no-fake-completeness.sh, seit 07.04.2026 aktiv),
+# lief nicht - er ist lokal an Franks Maschine gebunden und feuert nicht in
+# Cloud-Sessions oder Background-Subagenten. Der Owner hat zu Recht darauf
+# hingewiesen, dass er nicht die manuelle Verifikations-Schicht sein soll,
+# die ein fehlendes Gate ersetzt ("willst Du mich verarschen").
+#
+# Dieser Workflow portiert dieselbe deterministische Regex-Pruefung (kein
+# LLM, keine Kosten, keine Latenz) aus dem lokalen Hook in ein CI-Gate, das
+# unabhaengig vom Session-Typ greift - lokal, Cloud, Background-Agent,
+# jede Quelle die einen PR erzeugt.
+#
+# Beispiel-Aufruf im Caller-Repo:
+#
+#   permissions:
+#     contents: read
+#     pull-requests: read
+#   jobs:
+#     claim-lint:
+#       uses: Klangschalen/.github/.github/workflows/claim-lint.yml@<SHA>
+#       with:
+#         warn_only: true
+#       permissions:
+#         contents: read
+#         pull-requests: read
+#       secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      warn_only:
+        description: "Wenn true, nur Warnung statt Fehler (Einfuehrungsphase)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pruefen:
+    name: Claim-Lint Pruefung
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      # Dieselbe Wortstamm-Logik wie claude-config/hooks/no-fake-completeness.sh
+      # (ASCII-Staemme, damit \uXXXX-escapte Umlaute im JSON keine Rolle spielen
+      # - hier reiner Text, aber die Staemme bleiben identisch fuer Konsistenz
+      # mit dem lokalen Hook).
+      - name: Gate 1 - PR-Beschreibung ohne Vollstaendigkeits-Beleg
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -e
+          BODY="${PR_BODY:-}"
+          if [ -z "$BODY" ]; then
+            echo "Kein PR-Body vorhanden, Gate 1 uebersprungen."
+            exit 0
+          fi
+          echo "$BODY" > /tmp/pr_body.txt
+
+          FAKE=$(grep -iE -c "alles gepr(u|ü)ft|komplett gepr(u|ü)ft|\<vollst(a|ä)ndig|100%.*gepr(u|ü)ft|alle.*verifiziert" /tmp/pr_body.txt || true)
+          HAS_NUMBER=$(grep -E -c "[0-9]+[[:space:]]*(von|/)[[:space:]]*[0-9]+" /tmp/pr_body.txt || true)
+
+          echo "Vollstaendigkeits-Formulierungen gefunden: $FAKE"
+          echo "Begleitende Zahlen (X von Y / X/Y) gefunden: $HAS_NUMBER"
+
+          if [ "$FAKE" -gt 0 ] && [ "$HAS_NUMBER" -eq 0 ]; then
+            msg="FAKE-COMPLETENESS in PR-Beschreibung: 'vollstaendig'/'alles geprueft' ohne begleitende Zahlen (Format 'X von Y' oder 'X/Y'). Jede Vollstaendigkeits-Behauptung braucht einen Beleg, sonst ist sie nicht pruefbar."
+            if [ "${{ inputs.warn_only }}" = "true" ]; then
+              echo "::warning::$msg"
+            else
+              echo "::error::$msg"
+              exit 1
+            fi
+          else
+            echo "OK - keine unbelegte Vollstaendigkeits-Behauptung in der PR-Beschreibung."
+          fi
+
+      # Zweite Stelle, an der solche Behauptungen typischerweise landen:
+      # neu hinzugefuegte CHANGELOG-Zeilen im Diff selbst.
+      - name: Gate 2 - Neue CHANGELOG-Zeilen ohne Vollstaendigkeits-Beleg
+        shell: bash
+        run: |
+          set -e
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git fetch origin "$base" --depth=50 2>/dev/null || true
+
+          if ! git diff --name-only "$base"..."$head" 2>/dev/null | grep -qE '^CHANGELOG\.md$'; then
+            echo "CHANGELOG.md nicht im Diff, Gate 2 uebersprungen."
+            exit 0
+          fi
+
+          ADDED=$(git diff "$base"..."$head" -- CHANGELOG.md | grep -E '^\+' | grep -v '^\+\+\+' || true)
+          echo "$ADDED" > /tmp/changelog_added.txt
+
+          FAKE=$(grep -iE -c "alles gepr(u|ü)ft|komplett gepr(u|ü)ft|\<vollst(a|ä)ndig|100%.*gepr(u|ü)ft|alle.*verifiziert" /tmp/changelog_added.txt || true)
+          HAS_NUMBER=$(grep -E -c "[0-9]+[[:space:]]*(von|/)[[:space:]]*[0-9]+" /tmp/changelog_added.txt || true)
+
+          echo "Vollstaendigkeits-Formulierungen in neuen CHANGELOG-Zeilen: $FAKE"
+          echo "Begleitende Zahlen gefunden: $HAS_NUMBER"
+
+          if [ "$FAKE" -gt 0 ] && [ "$HAS_NUMBER" -eq 0 ]; then
+            msg="FAKE-COMPLETENESS im CHANGELOG-Diff: 'vollstaendig'/'alles geprueft' ohne begleitende Zahlen. Schreibe 'X von Y geprueft' statt einer pauschalen Behauptung."
+            if [ "${{ inputs.warn_only }}" = "true" ]; then
+              echo "::warning::$msg"
+            else
+              echo "::error::$msg"
+              exit 1
+            fi
+          else
+            echo "OK - keine unbelegte Vollstaendigkeits-Behauptung in neuen CHANGELOG-Zeilen."
+          fi
