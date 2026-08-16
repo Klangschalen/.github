@@ -29,3 +29,46 @@ jobs:
 - `warn_only: false`: meldet als Fehler, blockt PR (rote Pruefung)
 
 Empfehlung: 2 Wochen `warn_only: true`, dann auf `false` umstellen.
+
+## claim-lint.yml
+
+Wiederverwendbare Action, die PR-Beschreibungen und neue CHANGELOG-Zeilen
+gegen unbelegte Vollstaendigkeits-Behauptungen prueft ("vollstaendig",
+"alles geprueft", "komplett geprueft" ohne begleitende Zahlen wie
+"X von Y" oder "X/Y"). Rein deterministisch (Bash/Regex), kein LLM-Call,
+keine Kosten, keine Latenz.
+
+**Hintergrund:** portiert dieselbe Pruef-Logik wie der lokale PostToolUse-
+Hook `claude-config/hooks/no-fake-completeness.sh` (seit 07.04.2026 aktiv),
+der nur auf Franks Maschine feuert - nicht in Cloud-Sessions oder
+Background-Subagenten. Genau dort ist am 16.08.2026 in
+`engineering-principles` PR #12 eine unbelegte Vollstaendigkeits-Behauptung
+durchgerutscht (siehe `engineering-principles/LEARNINGS.md` L-035/L-036).
+
+### Einbindung in einem Repo
+
+```yaml
+# .github/workflows/claim-lint.yml im Ziel-Repo
+name: Claim-Lint
+on: [pull_request]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  claim-lint:
+    uses: Klangschalen/.github/.github/workflows/claim-lint.yml@main
+    with:
+      warn_only: true
+    permissions:
+      contents: read
+      pull-requests: read
+    secrets: inherit
+```
+
+### Modi
+
+- `warn_only: true` (Default): meldet als Warnung, blockt PR nicht
+- `warn_only: false`: meldet als Fehler, blockt PR (rote Pruefung)
+
+Empfehlung: wie bei doku-lint.yml zunaechst `warn_only: true`, nach
+Bewaehrung auf `false` umstellen.
