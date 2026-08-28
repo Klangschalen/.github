@@ -1,0 +1,52 @@
+name: HWG Hauptzweig-Deckung
+
+# Autoritativer Cross-Repo-Nachweis: Anders als ein einzelnes Repository sieht
+# dieser Lauf sowohl die kanonische Quelle als auch den produktiven Verbraucher.
+# Fehlender Zugriff ist ein Fehler und darf niemals als PASS erscheinen.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 4 * * *"
+  push:
+    paths:
+      - ".github/workflows/hwg-cross-repo-coverage.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/hwg-cross-repo-coverage.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  hwg-deckung:
+    name: quality-system gegen pl-sets pruefen
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Kanonische Quelle auschecken (quality-system)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/quality-system
+          path: quality-system
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Produktiven Verbraucher auschecken (pl-sets)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/pl-sets
+          path: pl-sets
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Deckungslogik gegen falsches Gruen testen
+        run: |
+          python3 -m pip install --quiet pytest
+          python3 -m pytest quality-system/tests/test_check_textdaten_drift.py -q
+
+      - name: Gemergte Hauptstaende autoritativ pruefen
+        # Der Checker darf hier nicht in seinen absichtlich toleranten
+        # GitHub-Einzelrepo-Modus fallen. Fehlt ein Checkout, muss rc=2 blockieren.
+        env:
+          DRIFT_TEST_KONSUMENTEN_WURZEL: ${{ github.workspace }}
+          GITHUB_ACTIONS: ""
+        run: python3 quality-system/tests/check-textdaten-drift.py
