@@ -1,1 +1,5 @@
-awk: cannot open "--" (No such file or directory)
+# Sicherheitskritische Organisations-Workflows brauchen eine sichtbare Owner-Pruefung.
+*                         @Klangschalen
+/.github/workflows/**    @Klangschalen
+/.github/CODEOWNERS      @Klangschalen
+
