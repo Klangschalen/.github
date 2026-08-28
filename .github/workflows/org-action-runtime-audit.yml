@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - ".github/workflows/org-action-runtime-audit.yml"
+      - ".github/workflows/**"
       - "scripts/org_action_runtime_audit.py"
       - "scripts/test_org_action_runtime_audit.py"
 
