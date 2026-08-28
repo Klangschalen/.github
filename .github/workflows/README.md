@@ -72,3 +72,21 @@ jobs:
 
 Empfehlung: wie bei doku-lint.yml zunaechst `warn_only: true`, nach
 Bewaehrung auf `false` umstellen.
+
+## org-action-runtime-audit.yml
+
+Taeglicher organisationsweiter Waechter fuer aktive GitHub-Actions-Workflows.
+Er liest mit `ORG_AUDIT_TOKEN` alle nicht archivierten Repositories und
+aktualisiert ein einziges Sammel-Issue in `Klangschalen/.github`.
+
+Er meldet:
+
+1. JavaScript-Actions, deren `action.yml` nicht `node24` verwendet.
+2. Externe Actions ohne vollständigen 40-stelligen Commit-SHA-Pin.
+3. Unvollständige Scans, insbesondere wenn weniger als 41 Repositories sichtbar sind.
+
+Der dritte Punkt ist fail-closed: Verliert das Token Zugriff, wird der Lauf rot
+und darf nicht als sauber interpretiert werden. Aktuelle Befunde bleiben
+zunächst ein weicher, sichtbarer Bestand im Sammel-Issue; die einzelnen
+Korrekturen laufen kontrolliert als PR je Repository.
+
