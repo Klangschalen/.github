@@ -1,0 +1,83 @@
+name: Org Action Runtime Audit
+
+# Taeglicher org-weiter Schutz gegen veraltete GitHub-Action-Runtimes und
+# bewegliche externe Tags. Liest alle nicht archivierten Klangschalen-Repos
+# mit ORG_AUDIT_TOKEN und aktualisiert genau ein Sammel-Issue in diesem Repo.
+
+on:
+  schedule:
+    - cron: "20 3 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/org-action-runtime-audit.yml"
+      - "scripts/org_action_runtime_audit.py"
+      - "scripts/test_org_action_runtime_audit.py"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    name: Action-Runtimes in allen Repos pruefen
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Selbsttest
+        run: python3 scripts/test_org_action_runtime_audit.py
+
+      - name: Organisationsweiten Audit ausfuehren
+        id: audit
+        env:
+          GH_TOKEN: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/org_action_runtime_audit.py \
+            --org Klangschalen \
+            --required-node node24 \
+            --min-repos 41 \
+            --out action-runtime-report.md
+          RC=$?
+          echo "rc=$RC" >> "$GITHUB_OUTPUT"
+          echo "Audit-Rueckgabewert: $RC (0 = vollstaendig, 2 = nicht vollstaendig lesbar)"
+          exit 0
+
+      - name: Bericht in Job-Summary uebernehmen
+        if: always() && hashFiles('action-runtime-report.md') != ''
+        run: cat action-runtime-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sammel-Issue erstellen oder aktualisieren
+        if: always() && hashFiles('action-runtime-report.md') != ''
+        env:
+          GH_TOKEN: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TITLE="Org Action-Runtime-Audit (automatisch)"
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" \
+            --state open --search "in:title $TITLE" \
+            --json number,title --jq \
+            ".[] | select(.title==\"$TITLE\") | .number" | head -1)
+          if [ -n "$EXISTING" ]; then
+            echo "Aktualisiere Issue #$EXISTING"
+            gh issue edit "$EXISTING" --repo "${{ github.repository }}" \
+              --body-file action-runtime-report.md
+          else
+            echo "Erstelle Sammel-Issue"
+            gh issue create --repo "${{ github.repository }}" \
+              --title "$TITLE" --body-file action-runtime-report.md
+          fi
+
+      - name: Unvollstaendigen Scan hart melden
+        if: always() && steps.audit.outputs.rc == '2'
+        run: |
+          echo "::error::Der Org-Audit konnte nicht alle erwarteten Daten lesen. Bericht und ORG_AUDIT_TOKEN pruefen."
+          exit 1
