@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "policy_id": "SS-ARCHIFY-PRESENCE-001",
+  "upstream": {
+    "repository": "tt-a1i/archify",
+    "version": "2.16.0",
+    "commit": "c826e6c3a7abad19c0f3cd1ca57207d54b1ad8de"
+  },
+  "architecture": {
+    "canonical_home": "Klangschalen/zentrale",
+    "mode": "CENTRAL_DERIVED_READ_VIEW",
+    "note": "Archify bleibt eine abgeleitete Lesesicht. Nicht jedes Repository erhaelt eine Kopie."
+  },
+  "repositories": {
+    "Klangschalen/.github": {
+      "required_paths": [
+        ".github/workflows/archify-presence-guard.yml",
+        "config/archify-presence-policy.json",
+        "scripts/archify_presence_guard.py",
+        "scripts/test_archify_presence_guard.py"
+      ],
+      "required_fragments": {
+        ".github/workflows/archify-presence-guard.yml": [
+          "scripts/archify_presence_guard.py",
+          "pull_request:",
+          "merge_group:"
+        ]
+      }
+    },
+    "Klangschalen/zentrale": {
+      "required_paths": [
+        ".github/workflows/archify-system-map.yml",
+        ".github/workflows/company-os-agent-outcomes.yml",
+        "company-os/archify/README.md",
+        "company-os/archify/sound-spirit-control-plane.architecture.json",
+        "company-os/archify/sound-spirit-control-plane.html",
+        "company-os/reports/archify/current.workflow.json",
+        "company-os/reports/archify/current.html"
+      ],
+      "required_fragments": {
+        ".github/workflows/archify-system-map.yml": [
+          "tt-a1i/archify",
+          "c826e6c3a7abad19c0f3cd1ca57207d54b1ad8de",
+          "cmp"
+        ],
+        "company-os/archify/README.md": [
+          "Archify bleibt die gemeinsame, nur lesende Darstellungsschicht",
+          "c826e6c3a7abad19c0f3cd1ca57207d54b1ad8de"
+        ]
+      }
+    },
+    "Klangschalen/seiten-bausteine": {
+      "required_paths": [
+        ".github/workflows/header-design-system.yml",
+        "design-system/ARCHITECTURE.md",
+        "design-system/archify.lock.json",
+        "docs/header-design-system.architecture.json"
+      ],
+      "required_fragments": {
+        ".github/workflows/header-design-system.yml": [
+          "tt-a1i/archify",
+          "c826e6c3a7abad19c0f3cd1ca57207d54b1ad8de"
+        ],
+        "design-system/archify.lock.json": [
+          "\"version\": \"2.16.0\"",
+          "c826e6c3a7abad19c0f3cd1ca57207d54b1ad8de"
+        ]
+      }
+    }
+  }
+}
