@@ -7,7 +7,11 @@ eingebunden wird. Prueft 3 Gates:
 
 1. Pflicht-Dateien vorhanden (LICENSE, CHANGELOG, STATUS, CONTRIBUTING, SECURITY, ...)
 2. CHANGELOG.md beruehrt bei Code-Aenderung
-3. Conventional Commit Format
+3. Commit-Nachrichten-Norm (SSoT: `claude-config` `rules/commit-nachrichten-norm.md`) - bei
+   Pull Requests wird der PR-TITEL geprueft (der bei Squash-Merge mit
+   `squash_merge_commit_title=PR_TITLE` zur endgueltigen Commit-Nachricht wird), sonst der
+   letzte Commit-Titel. Typen: `feat fix refactor test docs chore ci build perf style revert`,
+   optional `(scope)` und `!`.
 
 ### Einbindung in einem Repo
 
