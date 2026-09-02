@@ -100,16 +100,40 @@ jobs:
             echo "Keine Code-Aenderung im PR, CHANGELOG-Touch nicht noetig."
           fi
 
-      - name: Gate 3 - Conventional-Commit-Format des letzten Commits
+      - name: Gate 3 - Commit-Nachrichten-Norm
+        # SSoT: Klangschalen/claude-config rules/commit-nachrichten-norm.md
+        # (tools/commit_nachricht_pruefen.py liest denselben Ausdruck von dort;
+        # hier ein Spiegel, siehe Kommentar oben in dieser Datei zu Cross-Repo-
+        # Checkouts ohne Read-Token).
+        #
+        # Bug behoben 2026-09-02 (plans/commit-nachrichten-sauber-nightly.md):
+        # Diese Gate prueft ab jetzt bei Pull Requests den PR-TITEL, nicht mehr
+        # `git log -1`. Grund: Repos mit Squash-Merge +
+        # squash_merge_commit_title=PR_TITLE (Tor 1 der Norm) verwenden den
+        # PR-Titel als endgueltige Commit-Nachricht auf dem Standardzweig - der
+        # letzte Rohcommit des Feature-Branchs (oft ein Zwischenstand wie "wip"
+        # oder "fix typo") landet dort nie. Ausserhalb von Pull Requests (z.B.
+        # direkter Push) bleibt `git log -1` die einzig verfuegbare Quelle.
         shell: bash
+        env:
+          # Ueber env statt direkt in ${{ }} im run-Block interpoliert - ein
+          # PR-Titel ist Fremdeingabe und darf nicht als Skript-Text landen
+          # (Skript-Injektionsmuster, siehe claude-config PR #351/#347).
+          PR_TITEL: ${{ github.event.pull_request.title }}
         run: |
           set -e
-          msg=$(git log -1 --pretty=%s)
-          echo "Letzter Commit-Titel: $msg"
-          if echo "$msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|build|ci|revert)(\([a-z0-9-]+\))?!?:'; then
-            echo "OK - Conventional Commit"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            quelle="PR-Titel"
+            msg="$PR_TITEL"
           else
-            warn="Commit-Titel nicht Conventional: '$msg' (erwartet: feat:/fix:/docs:/...)"
+            quelle="letzter Commit-Titel"
+            msg=$(git log -1 --pretty=%s)
+          fi
+          echo "$quelle: $msg"
+          if echo "$msg" | grep -qP '^(feat|fix|refactor|test|docs|chore|ci|build|perf|style|revert)(\([a-z0-9._/-]+\))?!?: \S'; then
+            echo "OK - erfuellt die Commit-Nachrichten-Norm"
+          else
+            warn="$quelle erfuellt nicht die Commit-Nachrichten-Norm: '$msg' (erwartet z.B. 'feat(scope): Text' - siehe rules/commit-nachrichten-norm.md in claude-config)"
             if [ "${{ inputs.warn_only }}" = "true" ]; then
               echo "::warning::$warn"
             else
