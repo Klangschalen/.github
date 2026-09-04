@@ -7,33 +7,13 @@
 # Empfehlung: Weg C (GitHub-Action, ICE 6.48 MUST) plus Weg A (Chocolatey,
 # ICE 4.32 SHOULD) parallel.
 #
-# Caller-Beispiel (in jedem Klangschalen-Repo unter
-# `.github/workflows/security-scan.yml`):
-#
-#   name: Security
-#   on:
-#     pull_request:
-#       branches: [main, master]
-#     push:
-#       branches: [main, master]
-#   jobs:
-#     gitleaks:
-#       uses: Klangschalen/.github/.github/workflows/gitleaks-scan.yml@main
-#       secrets: inherit
-#
-# Anlass: ICE 6.48 MUST aus
-# `~/.claude/docs/sota/gitleaks-installation-2026-05-24.md` Abschnitt 5.
-#
-# Fix 2026-05-26: `fail-on-detection: false` greift bisher nicht. Ursache:
-# gitleaks-action@v2 setzt Step-Conclusion=failure bei Findings; GitHub
-# leitet das auf Job-Conclusion=failure ab, auch wenn `continue-on-error: true`
-# den Workflow-Abbruch verhindert. Caller bekommen dadurch trotzdem
-# rote-Mail-Notifications.
-#
-# Fix-Strategie: gitleaks-action durch direkten gitleaks-CLI-Aufruf ersetzen.
-# Exit-Code wird in Bash kontrolliert, Step-Conclusion bleibt sauber. Bei
-# fail-on-detection=false wird das Skript NIE mit Fehler beendet, bei =true
-# nur wenn Findings da sind.
+# Fix 2026-09-04: Ein Pull Request darf nicht durch Commits eines anderen
+# offenen Zweigs rot werden. `fetch-depth: 0` bleibt fuer den Vergleich mit dem
+# Basis-Commit noetig. Der Scan bekommt aber einen expliziten Git-Bereich:
+# - Pull Request: Basis-SHA..Quell-SHA
+# - Push: vorheriger SHA..aktueller SHA
+# - Zeitplan/manuell: HEAD und damit nur die Historie des ausgecheckten Zweigs
+# `--all` ist bewusst verboten, weil es fremde Zweige wieder einschliessen wuerde.
 
 name: gitleaks-scan (reusable)
 
@@ -69,11 +49,12 @@ jobs:
     runs-on: ubuntu-latest
     name: gitleaks-scan
     steps:
-      - name: Checkout (full history)
+      - name: Checkout des exakten ausloesenden Commits
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Volle History noetig damit gitleaks alle Commits scannen kann
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install gitleaks CLI
         id: install
@@ -89,14 +70,52 @@ jobs:
           sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
-      - name: Run gitleaks (immer exit 0 - exit-code wird unten kontrolliert)
+      - name: Scan-Bereich bestimmen
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+            git cat-file -e "${PR_BASE_SHA}^{commit}"
+            git cat-file -e "${PR_HEAD_SHA}^{commit}"
+            LOG_OPTS="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+            SCOPE_KIND="pull_request_change"
+          elif [[ "$EVENT_NAME" == "push" && "$PUSH_BEFORE_SHA" != "$ZERO_SHA" ]]; then
+            [[ "$PUSH_BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$CURRENT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            git cat-file -e "${PUSH_BEFORE_SHA}^{commit}"
+            git cat-file -e "${CURRENT_SHA}^{commit}"
+            LOG_OPTS="${PUSH_BEFORE_SHA}..${CURRENT_SHA}"
+            SCOPE_KIND="push_change"
+          else
+            git cat-file -e "HEAD^{commit}"
+            LOG_OPTS="HEAD"
+            SCOPE_KIND="current_branch_history"
+          fi
+          echo "log_opts=$LOG_OPTS" >> "$GITHUB_OUTPUT"
+          echo "scope_kind=$SCOPE_KIND" >> "$GITHUB_OUTPUT"
+          echo "Gitleaks scope: $SCOPE_KIND ($LOG_OPTS)"
+
+      - name: Run gitleaks im bestimmten Bereich
         id: gitleaks
         shell: bash
+        env:
+          LOG_OPTS: ${{ steps.scope.outputs.log_opts }}
         run: |
           set -uo pipefail
-          ARGS=(detect --source . --redact -v --no-banner)
+          ARGS=(git --redact -v --no-banner)
+          ARGS+=(--log-opts="$LOG_OPTS")
           ARGS+=(--report-format sarif --report-path results.sarif)
-          # exit-code 0 = nie failen, wir kontrollieren das selbst
+          # exit-code 0 = nie hier failen; der folgende Schritt entscheidet sichtbar.
           ARGS+=(--exit-code 0)
 
           CONFIG_PATH="${{ inputs.config-path }}"
@@ -111,7 +130,7 @@ jobs:
             echo "Using gitleaks default rules"
           fi
 
-          gitleaks "${ARGS[@]}"
+          gitleaks "${ARGS[@]}" .
 
           if [[ -f results.sarif ]]; then
             LEAKS=$(jq '[.runs[].results[]] | length' results.sarif)
@@ -133,6 +152,8 @@ jobs:
             echo "- Repo: \`${{ github.repository }}\`"
             echo "- Branch: \`${{ github.ref_name }}\`"
             echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Scan-Art: \`${{ steps.scope.outputs.scope_kind || 'unknown' }}\`"
+            echo "- Git-Bereich: \`${{ steps.scope.outputs.log_opts || 'unknown' }}\`"
             echo "- fail-on-detection: \`${{ inputs.fail-on-detection }}\`"
             echo ""
             if [[ -f results.sarif && "$LEAKS" -gt 0 ]]; then
@@ -154,21 +175,21 @@ jobs:
           path: results.sarif
           retention-days: 30
 
-      - name: Fail wenn Findings + fail-on-detection true
+      - name: Fail wenn Findings und fail-on-detection true
         if: |
           inputs.fail-on-detection == true &&
           steps.gitleaks.outputs.leaks != '0' &&
           steps.gitleaks.outputs.leaks != ''
         shell: bash
         run: |
-          echo "::error::Gitleaks fand ${{ steps.gitleaks.outputs.leaks }} Secrets - Job wird auf rot gesetzt (fail-on-detection=true)"
+          echo "::error::Gitleaks fand ${{ steps.gitleaks.outputs.leaks }} Secrets im aktuellen Scan-Bereich - Job wird auf rot gesetzt"
           exit 1
 
-      - name: Hinweis wenn Findings + fail-on-detection false
+      - name: Hinweis wenn Findings und fail-on-detection false
         if: |
           inputs.fail-on-detection == false &&
           steps.gitleaks.outputs.leaks != '0' &&
           steps.gitleaks.outputs.leaks != ''
         shell: bash
         run: |
-          echo "::warning::Gitleaks fand ${{ steps.gitleaks.outputs.leaks }} Secrets - fail-on-detection=false, Job bleibt gruen. SARIF im Artifact, Summary mit Top-20-Findings."
+          echo "::warning::Gitleaks fand ${{ steps.gitleaks.outputs.leaks }} Secrets im aktuellen Scan-Bereich - Job bleibt gruen. SARIF im Artefakt."
