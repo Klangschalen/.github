@@ -39,3 +39,20 @@ Die Workflow-Definition ist da bereits eingebunden.
 ## Hilfe
 
 team@sound-spirit.de
+
+## Archify-Löschschutz
+
+Archify bleibt zentral in `Klangschalen/zentrale` als abgeleitete, nur lesende
+Ansicht. Die einzelnen Repositories brauchen keine Kopien. Der
+`Archify Presence Guard` schützt jedoch vor jedem Merge die dauerhaften Quellen,
+HTML-Ansichten, Workflows und den festgehaltenen Upstream-Commit.
+
+Der Workflow ist für eine organisationsweite Ruleset-Regel
+**Require workflows to pass before merging** vorgesehen. Quelle:
+`.github/workflows/archify-presence-guard.yml` auf `main`. Die Regel wird
+zunächst im Modus **Evaluate** geprüft und danach menschlich auf **Active**
+gestellt. Erst `Active` verhindert einen Merge bei fehlenden Archify-Dateien.
+
+Der Wächter hat nur `contents: read`, enthält keine Secrets und ändert weder
+Websites noch andere Repositories.
+

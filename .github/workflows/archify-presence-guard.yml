@@ -1,0 +1,55 @@
+name: Archify Presence Guard
+
+# Dieser Workflow ist als organisationsweiter Ruleset-Workflow gedacht. Er liegt
+# ausserhalb der Ziel-Repositories, damit ein PR nicht Archify und den Waechter
+# gemeinsam entfernen kann.
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/archify-presence-guard.yml"
+      - "config/archify-presence-policy.json"
+      - "scripts/archify_presence_guard.py"
+      - "scripts/test_archify_presence_guard.py"
+
+permissions:
+  contents: read
+
+jobs:
+  protect:
+    name: Archify darf nicht verschwinden
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Zu pruefenden Stand auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: target
+          persist-credentials: false
+
+      - name: Zentrale Schutzlogik getrennt auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/.github
+          ref: main
+          path: org-policy
+          persist-credentials: false
+
+      - name: Schutzlogik selbst pruefen
+        working-directory: org-policy/scripts
+        run: python3 test_archify_presence_guard.py
+
+      - name: Archify-Praesenz fail-closed pruefen
+        run: |
+          python3 org-policy/scripts/archify_presence_guard.py \
+            --policy org-policy/config/archify-presence-policy.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --root target \
+            --summary archify-presence-summary.md
+
+      - name: Ergebnis anzeigen
+        if: always() && hashFiles('archify-presence-summary.md') != ''
+        run: cat archify-presence-summary.md >> "$GITHUB_STEP_SUMMARY"
