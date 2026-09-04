@@ -42,13 +42,10 @@ def extract_default_types(workflow: str) -> set[str]:
     return {item.strip() for item in match.group(1).split(",") if item.strip()}
 
 
-def extract_subject_pattern(workflow: str) -> re.Pattern[str]:
-    match = re.search(
-        r"CONVENTIONAL_SUBJECT_PATTERN:\s*'([^']+)'",
-        workflow,
-    )
+def extract_pattern(workflow: str, variable: str) -> re.Pattern[str]:
+    match = re.search(rf"{re.escape(variable)}:\s*'([^']+)'", workflow)
     if not match:
-        raise AssertionError("CONVENTIONAL_SUBJECT_PATTERN fehlt")
+        raise AssertionError(f"{variable} fehlt")
     return re.compile(match.group(1))
 
 
@@ -86,7 +83,7 @@ def test_commit_contract(workflow: str) -> None:
     if not block or block.group(1) != "false":
         raise AssertionError("Gate 3 muss standardmaessig blockieren")
 
-    pattern = extract_subject_pattern(workflow)
+    pattern = extract_pattern(workflow, "CONVENTIONAL_SUBJECT_PATTERN")
     valid = (
         "policy: define output contract",
         "docs(policy): explain output contract",
@@ -107,10 +104,43 @@ def test_commit_contract(workflow: str) -> None:
             raise AssertionError(f"Ungueltiger Titel wird akzeptiert: {subject}")
 
 
+def test_changelog_contract(workflow: str) -> None:
+    pattern = extract_pattern(workflow, "CHANGELOG_PATH_PATTERN")
+    valid = (
+        "CHANGELOG.md",
+        "CHANGELOG.d/2026-09-04-doku-lint.md",
+        "CHANGELOG.d/github/doku-lint.md",
+    )
+    invalid = (
+        "docs/CHANGELOG.md",
+        "CHANGELOG.d/note.txt",
+        "CHANGELOG.d/",
+    )
+
+    for path in valid:
+        if not pattern.match(path):
+            raise AssertionError(f"Gueltiger Changelog-Beleg wird abgelehnt: {path}")
+    for path in invalid:
+        if pattern.match(path):
+            raise AssertionError(f"Ungueltiger Changelog-Beleg wird akzeptiert: {path}")
+
+    require(
+        workflow,
+        'grep -E "$CHANGELOG_PATH_PATTERN"',
+        "Anwendung des Changelog-Pfadmusters",
+    )
+    require(
+        workflow,
+        "CHANGELOG.md oder CHANGELOG.d/*.md",
+        "Verstaendliche Fehlermeldung fuer Changelog-Belege",
+    )
+
+
 def test_documentation(workflow: str, docs: str) -> None:
     require(docs, "exakten PR-Head", "Dokumentation der Quellbindung")
     require(docs, "`policy:`", "Dokumentation des Richtlinien-Typs")
     require(docs, "`commit_format_warn_only: false`", "Dokumentation des harten Gates")
+    require(docs, "`CHANGELOG.d/", "Dokumentation der Changelog-Schnipsel")
 
     for commit_type in sorted(extract_default_types(workflow)):
         require(docs, f"`{commit_type}`", f"Dokumentierter Commit-Typ {commit_type}")
@@ -122,10 +152,12 @@ def main() -> int:
 
     test_exact_pr_head(workflow)
     test_commit_contract(workflow)
+    test_changelog_contract(workflow)
     test_documentation(workflow, docs)
 
     print("Doku-Lint-Vertrag: PASS")
     print(f"Gepruefte Commit-Typen: {', '.join(sorted(extract_default_types(workflow)))}")
+    print("Changelog-Belege: CHANGELOG.md oder CHANGELOG.d/*.md")
     return 0
 
 

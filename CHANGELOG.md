@@ -9,6 +9,9 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Geändert
 
+- fix(doku-lint): Code-Änderungen akzeptieren wahlweise `CHANGELOG.md` oder versionierte Schnipsel unter `CHANGELOG.d/*.md`
+- test(doku-lint): positive und negative Pfadfälle sichern den Changelog-Beleg gegen Rückfälle
+- docs(doku-lint): Einsatz und Grenzen von Changelog-Schnipseln erklären
 - fix(doku-lint): Pull Requests werden am exakten Quell-Commit statt am synthetischen GitHub-Merge-Commit geprüft
 - fix(doku-lint): Gate 3 erhält den eigenen Schalter `commit_format_warn_only` und blockiert standardmäßig
 - feat(doku-lint): `policy` ist ein erlaubter Commit-Typ; Caller können die Typen über `allowed_commit_types` gezielt erweitern

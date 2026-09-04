@@ -53,6 +53,7 @@ jobs:
       BASE_COMMIT: ${{ github.event.pull_request.base.sha || '' }}
       ALLOWED_COMMIT_TYPES: ${{ inputs.allowed_commit_types }}
       CONVENTIONAL_SUBJECT_PATTERN: '^([a-z][a-z0-9-]*)(\([a-z0-9-]+\))?!?:'
+      CHANGELOG_PATH_PATTERN: '^(CHANGELOG\.md|CHANGELOG\.d/.+\.md)$'
     steps:
       - name: Exakten Quell-Commit laden
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -102,7 +103,7 @@ jobs:
             fi
           fi
 
-      - name: Gate 2 - CHANGELOG-Touch bei Code-Aenderung
+      - name: Gate 2 - Changelog-Beleg bei Code-Aenderung
         if: github.event_name == 'pull_request'
         shell: bash
         env:
@@ -120,8 +121,10 @@ jobs:
           printf '%s\n' "$changed"
 
           code_changed="$(printf '%s\n' "$changed" | grep -E '\.(php|py|js|ts|sh|yml|yaml)$' || true)"
-          if [ -n "$code_changed" ] && ! printf '%s\n' "$changed" | grep -qE '^CHANGELOG\.md$'; then
-            message="Code-Aenderung ohne CHANGELOG-Touch: $code_changed"
+          changelog_changed="$(printf '%s\n' "$changed" | grep -E "$CHANGELOG_PATH_PATTERN" || true)"
+
+          if [ -n "$code_changed" ] && [ -z "$changelog_changed" ]; then
+            message="Code-Aenderung ohne CHANGELOG.md oder CHANGELOG.d/*.md: $code_changed"
             if [ "$WARN_ONLY" = "true" ]; then
               echo "::warning::$message"
             else
@@ -129,7 +132,8 @@ jobs:
               exit 1
             fi
           elif [ -n "$code_changed" ]; then
-            echo "OK - CHANGELOG.md ist mit beruehrt"
+            echo "OK - Changelog-Beleg vorhanden:"
+            printf '%s\n' "$changelog_changed"
           else
             echo "Keine Code-Aenderung im Pull Request."
           fi
