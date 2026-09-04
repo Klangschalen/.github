@@ -5,13 +5,31 @@
 Der wiederverwendbare Doku-Lint prüft drei getrennte Gates:
 
 1. Pflicht-Dateien sind vorhanden.
-2. Code-Änderungen berühren `CHANGELOG.md`.
+2. Code-Änderungen besitzen einen Changelog-Beleg.
 3. Der letzte Quell-Commit nutzt ein erlaubtes Conventional-Commit-Format.
 
 Bei Pull Requests lädt der Workflow immer den **exakten PR-Head**. Er prüft
 nicht den von GitHub erzeugten synthetischen Merge-Commit. Damit bleibt das
 Ergebnis unabhängig von der Checkout-Voreinstellung und zeigt den tatsächlich
 eingereichten Commit.
+
+### Changelog-Belege
+
+Code-Änderungen können auf zwei Arten dokumentiert werden:
+
+- Die bestehende Stammdatei `CHANGELOG.md` wird ergänzt.
+- Ein versionierter Schnipsel unter `CHANGELOG.d/*.md` wird hinzugefügt.
+
+Schnipsel eignen sich für große oder häufig geänderte Changelogs. Sie halten
+den Pull Request klein und vermeiden, dass mehrere Arbeitszweige dieselbe
+Stammdatei gleichzeitig ändern. Textdateien außerhalb von `CHANGELOG.d/` und
+andere Dateiendungen zählen nicht als Beleg.
+
+Beispiel:
+
+```text
+CHANGELOG.d/2026-09-04-doku-lint-central-contract.md
+```
 
 ### Erlaubte Commit-Typen
 
@@ -75,7 +93,7 @@ Version für einen bereits geprüften Caller.
 ### Modi
 
 - `warn_only: true` macht Gate 1 und Gate 2 zu Hinweisen.
-- `warn_only: false` blockiert bei fehlenden Dateien oder fehlendem Changelog.
+- `warn_only: false` blockiert bei fehlenden Dateien oder fehlendem Changelog-Beleg.
 - `commit_format_warn_only: false` blockiert Gate 3. Das ist der Standard.
 - `commit_format_warn_only: true` dient nur einer klar begrenzten Übergangsphase.
 
@@ -92,7 +110,8 @@ Die Ausgabe nennt:
 - den gefundenen Commit-Titel,
 - den nicht erlaubten Typ,
 - alle erlaubten Typen,
-- ein passendes Beispiel für Richtlinien.
+- ein passendes Beispiel für Richtlinien,
+- den fehlenden Changelog-Beleg und die betroffenen Code-Dateien.
 
 Ein Draft-Pull-Request bleibt unabhängig davon ein Draft. Der Doku-Lint ändert
 keinen Review- oder Freigabestatus.
@@ -106,6 +125,7 @@ Rückfälle:
 - Commit-Prüfung ohne explizite Quell-SHA,
 - Rückkehr des unsicheren `HEAD~1`-Fallbacks,
 - Entfernung des Typs `policy`,
+- Entfernung von `CHANGELOG.d/*.md` als gültigem Beleg,
 - versehentliches Zurückstellen von Gate 3 auf Warnmodus,
 - Abweichung zwischen Workflow und Dokumentation.
 
