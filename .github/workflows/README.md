@@ -2,61 +2,133 @@
 
 ## doku-lint.yml
 
-Wiederverwendbare Action, die in jedem Klangschalen-Repo per `uses:`
-eingebunden wird. Prueft 3 Gates:
+Der wiederverwendbare Doku-Lint prüft drei getrennte Gates:
 
-1. Pflicht-Dateien vorhanden (LICENSE, CHANGELOG, STATUS, CONTRIBUTING, SECURITY, ...)
-2. CHANGELOG.md beruehrt bei Code-Aenderung
-3. Conventional Commit Format
+1. Pflicht-Dateien sind vorhanden.
+2. Code-Änderungen berühren `CHANGELOG.md`.
+3. Der letzte Quell-Commit nutzt ein erlaubtes Conventional-Commit-Format.
 
-### Einbindung in einem Repo
+Bei Pull Requests lädt der Workflow immer den **exakten PR-Head**. Er prüft
+nicht den von GitHub erzeugten synthetischen Merge-Commit. Damit bleibt das
+Ergebnis unabhängig von der Checkout-Voreinstellung und zeigt den tatsächlich
+eingereichten Commit.
+
+### Erlaubte Commit-Typen
+
+Der Standard erlaubt diese Typen:
+
+- `feat`
+- `fix`
+- `docs`
+- `style`
+- `refactor`
+- `test`
+- `chore`
+- `perf`
+- `build`
+- `ci`
+- `revert`
+- `policy`
+
+Richtlinien können direkt mit `policy:` beginnen. Alternativ passt
+`docs(policy):`, wenn vor allem die Dokumentation einer Regel geändert wird.
+
+Beispiele:
+
+```text
+policy: require canonical pull-request links
+docs(policy): explain the canonical-link rule
+fix(doku-lint): check the exact pull-request head
+```
+
+### Einbindung in einem Repository
 
 ```yaml
-# .github/workflows/doku-lint.yml im Ziel-Repo
+# .github/workflows/doku-lint.yml im Ziel-Repository
 name: Doku-Lint
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
 jobs:
   lint:
-    uses: Klangschalen/.github/.github/workflows/doku-lint.yml@main
+    uses: Klangschalen/.github/.github/workflows/doku-lint.yml@<40-STELLIGE-SHA>
     with:
       pflicht_dateien: "README.md,LICENSE,CHANGELOG.md,STATUS.md,CONTRIBUTING.md,SECURITY.md,.editorconfig,.gitignore"
       warn_only: true
+      commit_format_warn_only: false
+    permissions:
+      contents: read
+    secrets: inherit
 ```
+
+Eine vollständige Commit-SHA schützt vor unbemerkten Änderungen des zentralen
+Workflows. `@main` verteilt neue Versionen sofort, bietet aber keine feste
+Version für einen bereits geprüften Caller.
 
 ### Modi
 
-- `warn_only: true` (Default): meldet als Warnung, blockt PR nicht
-- `warn_only: false`: meldet als Fehler, blockt PR (rote Pruefung)
+- `warn_only: true` macht Gate 1 und Gate 2 zu Hinweisen.
+- `warn_only: false` blockiert bei fehlenden Dateien oder fehlendem Changelog.
+- `commit_format_warn_only: false` blockiert Gate 3. Das ist der Standard.
+- `commit_format_warn_only: true` dient nur einer klar begrenzten Übergangsphase.
 
-Empfehlung: 2 Wochen `warn_only: true`, dann auf `false` umstellen.
+Caller dürfen `allowed_commit_types` überschreiben. Jede Abweichung muss im
+Repository dokumentiert und getestet werden. Der organisationsweite Standard
+enthält `policy`, damit Richtlinien-Commits nicht erneut an einer versteckten
+Regex scheitern.
+
+### Fehler lesen
+
+Die Ausgabe nennt:
+
+- den geprüften Quell-Commit,
+- den gefundenen Commit-Titel,
+- den nicht erlaubten Typ,
+- alle erlaubten Typen,
+- ein passendes Beispiel für Richtlinien.
+
+Ein Draft-Pull-Request bleibt unabhängig davon ein Draft. Der Doku-Lint ändert
+keinen Review- oder Freigabestatus.
+
+## doku-lint-contract.yml
+
+Der Vertragstest läuft bei Änderungen am Doku-Lint. Er verhindert diese
+Rückfälle:
+
+- Checkout des synthetischen Merge-Commits,
+- Commit-Prüfung ohne explizite Quell-SHA,
+- Rückkehr des unsicheren `HEAD~1`-Fallbacks,
+- Entfernung des Typs `policy`,
+- versehentliches Zurückstellen von Gate 3 auf Warnmodus,
+- Abweichung zwischen Workflow und Dokumentation.
 
 ## claim-lint.yml
 
-Wiederverwendbare Action, die PR-Beschreibungen und neue CHANGELOG-Zeilen
-gegen unbelegte Vollstaendigkeits-Behauptungen prueft ("vollstaendig",
-"alles geprueft", "komplett geprueft" ohne begleitende Zahlen wie
-"X von Y" oder "X/Y"). Rein deterministisch (Bash/Regex), kein LLM-Call,
-keine Kosten, keine Latenz.
+Der wiederverwendbare Claim-Lint prüft PR-Beschreibungen und neue
+Changelog-Zeilen gegen unbelegte Vollständigkeitsbehauptungen. Die Prüfung
+arbeitet deterministisch mit Bash und regulären Ausdrücken.
 
-**Hintergrund:** portiert dieselbe Pruef-Logik wie der lokale PostToolUse-
-Hook `claude-config/hooks/no-fake-completeness.sh` (seit 07.04.2026 aktiv),
-der nur auf Franks Maschine feuert - nicht in Cloud-Sessions oder
-Background-Subagenten. Genau dort ist am 16.08.2026 in
-`engineering-principles` PR #12 eine unbelegte Vollstaendigkeits-Behauptung
-durchgerutscht (siehe `engineering-principles/LEARNINGS.md` L-035/L-036).
-
-### Einbindung in einem Repo
+### Einbindung
 
 ```yaml
-# .github/workflows/claim-lint.yml im Ziel-Repo
 name: Claim-Lint
+
 on: [pull_request]
+
 permissions:
   contents: read
   pull-requests: read
+
 jobs:
   claim-lint:
-    uses: Klangschalen/.github/.github/workflows/claim-lint.yml@main
+    uses: Klangschalen/.github/.github/workflows/claim-lint.yml@<40-STELLIGE-SHA>
     with:
       warn_only: true
     permissions:
@@ -65,28 +137,14 @@ jobs:
     secrets: inherit
 ```
 
-### Modi
-
-- `warn_only: true` (Default): meldet als Warnung, blockt PR nicht
-- `warn_only: false`: meldet als Fehler, blockt PR (rote Pruefung)
-
-Empfehlung: wie bei doku-lint.yml zunaechst `warn_only: true`, nach
-Bewaehrung auf `false` umstellen.
-
 ## org-action-runtime-audit.yml
 
-Taeglicher organisationsweiter Waechter fuer aktive GitHub-Actions-Workflows.
-Er liest mit `ORG_AUDIT_TOKEN` alle nicht archivierten Repositories und
-aktualisiert ein einziges Sammel-Issue in `Klangschalen/.github`.
+Der tägliche organisationsweite Wächter prüft aktive GitHub-Actions-Workflows.
+Er meldet insbesondere:
 
-Er meldet:
+1. JavaScript-Actions ohne Node 24.
+2. Externe Actions ohne vollständigen Commit-SHA-Pin.
+3. Unvollständige Scans mit zu geringer Repository-Abdeckung.
 
-1. JavaScript-Actions, deren `action.yml` nicht `node24` verwendet.
-2. Externe Actions ohne vollständigen 40-stelligen Commit-SHA-Pin.
-3. Unvollständige Scans, insbesondere wenn weniger als 41 Repositories sichtbar sind.
-
-Der dritte Punkt ist fail-closed: Verliert das Token Zugriff, wird der Lauf rot
-und darf nicht als sauber interpretiert werden. Aktuelle Befunde bleiben
-zunächst ein weicher, sichtbarer Bestand im Sammel-Issue; die einzelnen
-Korrekturen laufen kontrolliert als PR je Repository.
-
+Der Abdeckungsfehler arbeitet fail-closed. Einzelne technische Befunde bleiben
+sichtbar und werden kontrolliert über Pull Requests behoben.
