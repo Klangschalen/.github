@@ -1,7 +1,10 @@
 name: Doku-Lint (zentral, wiederverwendbar)
 
-# Reusable Workflow - wird von anderen Repos per `uses:` eingebunden.
-# Beispiel-Aufruf im Caller-Repo:
+# Wiederverwendbarer Workflow fuer Klangschalen-Repositories.
+# Bei Pull Requests wird immer der exakte Quell-Commit geprueft, niemals der
+# von GitHub erzeugte synthetische Merge-Commit.
+#
+# Beispiel:
 #
 #   permissions:
 #     contents: read
@@ -10,13 +13,11 @@ name: Doku-Lint (zentral, wiederverwendbar)
 #       uses: Klangschalen/.github/.github/workflows/doku-lint.yml@<SHA>
 #       with:
 #         pflicht_dateien: "README.md,LICENSE,CHANGELOG.md,..."
+#         warn_only: true
+#         commit_format_warn_only: false
 #       permissions:
 #         contents: read
 #       secrets: inherit
-#
-# WICHTIG: Caller MUSS `secrets: inherit` setzen, sonst kommt der GITHUB_TOKEN
-# nicht beim cross-org Reusable-Workflow an (actions/checkout schlaegt sonst
-# mit "could not read Username" fehl).
 
 on:
   workflow_call:
@@ -26,9 +27,17 @@ on:
         type: string
         default: "README.md,LICENSE,CHANGELOG.md,STATUS.md,CONTRIBUTING.md,SECURITY.md,.editorconfig,.gitignore"
       warn_only:
-        description: "Wenn true, nur Warnung statt Fehler"
+        description: "Gate 1+2: wenn true, nur Warnung statt Fehler"
         type: boolean
         default: true
+      commit_format_warn_only:
+        description: "Gate 3: wenn true, nur Warnung statt Fehler"
+        type: boolean
+        default: false
+      allowed_commit_types:
+        description: "Komma-getrennte erlaubte Conventional-Commit-Typen"
+        type: string
+        default: "feat,fix,docs,style,refactor,test,chore,perf,build,ci,revert,policy"
 
 permissions:
   contents: read
@@ -36,84 +45,140 @@ permissions:
 jobs:
   pruefen:
     name: Doku-Lint Pruefung
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
+    env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      BASE_COMMIT: ${{ github.event.pull_request.base.sha || '' }}
+      ALLOWED_COMMIT_TYPES: ${{ inputs.allowed_commit_types }}
+      CONVENTIONAL_SUBJECT_PATTERN: '^([a-z][a-z0-9-]*)(\([a-z0-9-]+\))?!?:'
     steps:
-      - name: Checkout
-        # SHA-Pin auf v6.0.2 (Node 24 ready, vermeidet Deprecation-Warning 2026-06-02)
+      - name: Exakten Quell-Commit laden
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.SOURCE_COMMIT }}
           fetch-depth: 0
+          persist-credentials: false
           token: ${{ github.token }}
+
+      - name: Geprueften Commit ausgeben
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Ereignis: ${{ github.event_name }}"
+          echo "Quell-Commit: $SOURCE_COMMIT"
+          if [ -n "$BASE_COMMIT" ]; then
+            echo "Basis-Commit: $BASE_COMMIT"
+          fi
 
       - name: Gate 1 - Pflicht-Dateien vorhanden
         shell: bash
+        env:
+          WARN_ONLY: ${{ inputs.warn_only }}
         run: |
-          set -e
+          set -euo pipefail
           IFS=',' read -ra files <<< "${{ inputs.pflicht_dateien }}"
           missing=()
           present=()
-          for f in "${files[@]}"; do
-            if [ -f "$f" ]; then
-              present+=("$f")
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              present+=("$file")
             else
-              missing+=("$f")
+              missing+=("$file")
             fi
           done
+
           echo "Vorhanden (${#present[@]}): ${present[*]}"
           echo "Fehlen   (${#missing[@]}): ${missing[*]:-keine}"
-          if [ ${#missing[@]} -gt 0 ]; then
-            if [ "${{ inputs.warn_only }}" = "true" ]; then
-              echo "::warning::Fehlende Pflicht-Dateien: ${missing[*]}"
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            message="Fehlende Pflicht-Dateien: ${missing[*]}"
+            if [ "$WARN_ONLY" = "true" ]; then
+              echo "::warning::$message"
             else
-              echo "::error::Fehlende Pflicht-Dateien: ${missing[*]}"
+              echo "::error::$message"
               exit 1
             fi
           fi
 
-      - name: Gate 2 - CHANGELOG-Touch bei Code-Aenderung (nur Pull Requests)
+      - name: Gate 2 - CHANGELOG-Touch bei Code-Aenderung
         if: github.event_name == 'pull_request'
         shell: bash
+        env:
+          WARN_ONLY: ${{ inputs.warn_only }}
         run: |
-          set -e
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          git fetch origin "$base" --depth=50 || true
-          changed=$(git diff --name-only "$base"..."$head" || git diff --name-only HEAD~1)
-          echo "Geaenderte Dateien:"
-          echo "$changed"
-          code_changed=$(echo "$changed" | grep -E '\.(php|py|js|ts|sh|yml|yaml)$' || true)
-          if [ -n "$code_changed" ]; then
-            if echo "$changed" | grep -qE '^CHANGELOG\.md$'; then
-              echo "OK - CHANGELOG.md ist mit beruehrt"
-            else
-              msg="Code-Aenderung ohne CHANGELOG-Touch: $code_changed"
-              if [ "${{ inputs.warn_only }}" = "true" ]; then
-                echo "::warning::$msg"
-              else
-                echo "::error::$msg"
-                exit 1
-              fi
-            fi
-          else
-            echo "Keine Code-Aenderung im PR, CHANGELOG-Touch nicht noetig."
-          fi
+          set -euo pipefail
 
-      - name: Gate 3 - Conventional-Commit-Format des letzten Commits
-        shell: bash
-        run: |
-          set -e
-          msg=$(git log -1 --pretty=%s)
-          echo "Letzter Commit-Titel: $msg"
-          if echo "$msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|build|ci|revert)(\([a-z0-9-]+\))?!?:'; then
-            echo "OK - Conventional Commit"
-          else
-            warn="Commit-Titel nicht Conventional: '$msg' (erwartet: feat:/fix:/docs:/...)"
-            if [ "${{ inputs.warn_only }}" = "true" ]; then
-              echo "::warning::$warn"
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE_COMMIT"
+          fi
+          git cat-file -e "$BASE_COMMIT^{commit}"
+
+          changed="$(git diff --name-only "$BASE_COMMIT"..."$SOURCE_COMMIT")"
+          echo "Geaenderte Dateien:"
+          printf '%s\n' "$changed"
+
+          code_changed="$(printf '%s\n' "$changed" | grep -E '\.(php|py|js|ts|sh|yml|yaml)$' || true)"
+          if [ -n "$code_changed" ] && ! printf '%s\n' "$changed" | grep -qE '^CHANGELOG\.md$'; then
+            message="Code-Aenderung ohne CHANGELOG-Touch: $code_changed"
+            if [ "$WARN_ONLY" = "true" ]; then
+              echo "::warning::$message"
             else
-              echo "::error::$warn"
+              echo "::error::$message"
               exit 1
             fi
+          elif [ -n "$code_changed" ]; then
+            echo "OK - CHANGELOG.md ist mit beruehrt"
+          else
+            echo "Keine Code-Aenderung im Pull Request."
+          fi
+
+      - name: Gate 3 - Conventional Head-Commit
+        shell: bash
+        env:
+          COMMIT_FORMAT_WARN_ONLY: ${{ inputs.commit_format_warn_only }}
+        run: |
+          set -euo pipefail
+
+          message="$(git log -1 --pretty=%s "$SOURCE_COMMIT")"
+          echo "Gepruefter Commit-Titel: $message"
+          echo "Erlaubte Typen: $ALLOWED_COMMIT_TYPES"
+
+          format_ok=false
+          commit_type=""
+          if [[ "$message" =~ $CONVENTIONAL_SUBJECT_PATTERN ]]; then
+            format_ok=true
+            commit_type="${BASH_REMATCH[1]}"
+          fi
+
+          type_ok=false
+          if [ "$format_ok" = "true" ]; then
+            IFS=',' read -ra allowed_types <<< "$ALLOWED_COMMIT_TYPES"
+            for allowed_type in "${allowed_types[@]}"; do
+              allowed_type="${allowed_type//[[:space:]]/}"
+              if [ "$commit_type" = "$allowed_type" ]; then
+                type_ok=true
+                break
+              fi
+            done
+          fi
+
+          if [ "$format_ok" = "true" ] && [ "$type_ok" = "true" ]; then
+            echo "OK - Conventional Head-Commit mit Typ '$commit_type'"
+            exit 0
+          fi
+
+          if [ "$format_ok" != "true" ]; then
+            problem="Head-Commit $SOURCE_COMMIT hat kein Conventional-Commit-Format: '$message'"
+          else
+            problem="Commit-Typ '$commit_type' ist nicht erlaubt: '$message'"
+          fi
+
+          hint="Erlaubt: $ALLOWED_COMMIT_TYPES. Richtlinien nutzen 'policy: ...' oder 'docs(policy): ...'."
+          if [ "$COMMIT_FORMAT_WARN_ONLY" = "true" ]; then
+            echo "::warning::$problem. $hint"
+          else
+            echo "::error::$problem. $hint"
+            exit 1
           fi
