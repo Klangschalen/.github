@@ -168,3 +168,80 @@ Er meldet insbesondere:
 
 Der Abdeckungsfehler arbeitet fail-closed. Einzelne technische Befunde bleiben
 sichtbar und werden kontrolliert über Pull Requests behoben.
+
+## michael-spiegel.yml
+
+Trägt den Ordner `uebergabe-michael/` eines internen Repositorys automatisch nach
+`Klangschalen/michael-arbeitsuebergabe` unter `eingang/<quell-repository>/`. Anlass
+(05.09.2026): Übergaben für Michael entstehen in Repositories, in denen er kein Mitarbeiter
+ist; eine Mail an ihn verlinkte zwei solche Dateien. Der Spiegel ersetzt das Weiterreichen
+von Hand.
+
+Grundsätze:
+
+1. **Der Merge auf den Default-Zweig ist die Freigabe.** Es gibt keine zweite Entscheidung.
+2. **Nur der Ordner `uebergabe-michael/`** wird kopiert, nie das übrige Repository.
+3. **Im Ziel wird nie gelöscht.** Was Michael einmal bekommen hat, bleibt.
+4. **Fail-closed:** Zugangsdaten (`.env`, Schlüssel), interne Akten (`arbeitsjournal`,
+   `evidenzakte`) oder Personendaten (`kunden`, `adress`) im Namen, schlüsselähnlicher
+   Inhalt oder Dateien über 10 MB weisen den ganzen Lauf ab. Es wird dann nichts kopiert.
+5. **Token nur in der Quelle.** Das Secret `MICHAEL_SPIEGEL_TOKEN` (fine-grained PAT,
+   Contents: Read and write, ausschließlich auf `michael-arbeitsuebergabe`) liegt im
+   Quell-Repository oder als Org-Secret für ausgewählte interne Repositories. Es darf nie
+   in einem Repository liegen, in dem Michael Schreibrecht hat: ein Workflow dort könnte
+   es auslesen. Deshalb schreibt die Quelle ins Ziel, nie umgekehrt.
+
+### Einbindung in einem Quell-Repository
+
+```yaml
+# .github/workflows/michael-spiegel.yml im Quell-Repository
+name: Michael-Spiegel
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "uebergabe-michael/**"
+  workflow_dispatch:
+    inputs:
+      trockenlauf:
+        description: "true: nur zeigen, nicht pushen"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  spiegel:
+    uses: Klangschalen/.github/.github/workflows/michael-spiegel.yml@<40-STELLIGE-SHA>
+    with:
+      trockenlauf: ${{ github.event_name == 'workflow_dispatch' && inputs.trockenlauf || false }}
+    secrets:
+      spiegel_token: ${{ secrets.MICHAEL_SPIEGEL_TOKEN }}
+```
+
+Niemals `pull_request` als Auslöser: dann liefe der Spiegel mit Token auf ungemergtem Stand.
+
+### Was im Ordner `uebergabe-michael/` liegt
+
+Die `README.md` direkt im Ordner ist die interne Anleitung und wird nicht gespiegelt. Je Übergabe ein Unterordner `JJJJ-MM-TT-<thema>/` mit den Dateien, die Michael braucht, und
+einer `LIES-MICH.md`, die aus sich heraus erklärt, worum es geht, was er tun soll und wohin
+die Antwort geht (`rules/selbsterklaerend-nach-aussen.md` in claude-config). Links in Mails
+an Michael zeigen auf den Spiegelpfad
+`https://github.com/Klangschalen/michael-arbeitsuebergabe/blob/main/eingang/<quell-repository>/...`,
+nie auf das Quell-Repository.
+
+### Erster Lauf
+
+Über `workflow_dispatch` mit `trockenlauf: true`. Der Lauf zeigt Commit und Dateiliste,
+pusht aber nicht. Erst danach ein echter Lauf (Merge in `uebergabe-michael/` oder
+`trockenlauf: false`).
+
+## michael-spiegel-contract.yml
+
+Vertragstest bei Änderungen am Spiegel (`scripts/test_michael_spiegel_contract.py`):
+reiner `workflow_call`, Token nur im Ziel-Checkout, volle SHA-Pins, nichts wird gelöscht,
+Abweisungsmuster vorhanden; dazu das Kopierskript in beide Richtungen gegen Testordner
+(kopiert Erlaubtes mit Pfad, weist `.env`, Personendaten und Schlüssel fail-closed ab,
+lässt fehlende Ordner durch, löscht im Ziel nie).
