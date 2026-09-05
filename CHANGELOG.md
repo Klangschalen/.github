@@ -7,6 +7,10 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- feat(michael-spiegel): wiederverwendbarer Workflow `michael-spiegel.yml` trägt den Ordner `uebergabe-michael/` eines internen Repositorys nach `Klangschalen/michael-arbeitsuebergabe` unter `eingang/<quell-repository>/` (push-basiert, Token nur in der Quelle, fail-closed gegen Zugangsdaten, interne Akten und Personendaten, löscht im Ziel nie); Vertragstest `scripts/test_michael_spiegel_contract.py` und Workflow `michael-spiegel-contract.yml`
+
 ### Geändert
 
 - fix(doku-lint): Code-Änderungen akzeptieren wahlweise `CHANGELOG.md` oder versionierte Schnipsel unter `CHANGELOG.d/*.md`
