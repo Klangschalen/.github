@@ -4,6 +4,10 @@ name: Doku-Lint (zentral, wiederverwendbar)
 # Bei Pull Requests wird immer der exakte Quell-Commit geprueft, niemals der
 # von GitHub erzeugte synthetische Merge-Commit.
 #
+# Auf Push bleibt Gate 3 fuer echte direkte Commits hart. GitHub-erzeugte
+# Merge-/PR-Commits werden nicht erneut am synthetischen Titel abgelehnt,
+# weil der eingereichte PR-Head bereits im pull_request-Lauf geprueft wurde.
+#
 # Beispiel:
 #
 #   permissions:
@@ -148,6 +152,22 @@ jobs:
           message="$(git log -1 --pretty=%s "$SOURCE_COMMIT")"
           echo "Gepruefter Commit-Titel: $message"
           echo "Erlaubte Typen: $ALLOWED_COMMIT_TYPES"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            parent_line="$(git rev-list --parents -n1 "$SOURCE_COMMIT")"
+            parent_count=$(( $(awk '{print NF}' <<< "$parent_line") - 1 ))
+            committer_email="$(git log -1 --pretty=%ce "$SOURCE_COMMIT")"
+
+            if [ "$parent_count" -gt 1 ]; then
+              echo "OK - Git-Merge-Commit auf Push: PR-Head wurde im pull_request-Gate geprueft; synthetischer Merge-Titel wird nicht erneut blockierend bewertet."
+              exit 0
+            fi
+
+            if [[ "$committer_email" == *"noreply@github.com" ]] && [[ "$message" =~ \(#[0-9]+\)$ ]]; then
+              echo "OK - GitHub-erzeugter PR-Commit auf Push: PR-Head wurde bereits blockierend geprueft."
+              exit 0
+            fi
+          fi
 
           format_ok=false
           commit_type=""
