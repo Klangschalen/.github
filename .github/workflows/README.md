@@ -13,6 +13,18 @@ nicht den von GitHub erzeugten synthetischen Merge-Commit. Damit bleibt das
 Ergebnis unabhängig von der Checkout-Voreinstellung und zeigt den tatsächlich
 eingereichten Commit.
 
+### Push nach einem Merge
+
+Gate 3 bleibt für echte direkte Commits auf `main` oder `master` hart. Ein von GitHub
+erzeugter Merge-Commit wird auf dem anschließenden Push jedoch nicht ein zweites Mal an
+seinem synthetischen Titel blockiert. Gleiches gilt für einen von GitHub erzeugten
+PR-/Squash-Commit mit `(#<PR-Nummer>)` im Titel und GitHub als Committer.
+
+Der Grund: Der eingereichte PR-Head wurde bereits im `pull_request`-Lauf blockierend geprüft.
+Der Push-Lauf darf deshalb keinen falschen roten Zustand erzeugen, nur weil GitHub beim Merge
+einen neuen Titel bildet. Ein normaler direkter Push ohne diesen GitHub-Nachweis muss weiter
+das Conventional-Commit-Format erfüllen.
+
 ### Changelog-Belege
 
 Code-Änderungen können auf zwei Arten dokumentiert werden:
@@ -127,6 +139,7 @@ Rückfälle:
 - Entfernung des Typs `policy`,
 - Entfernung von `CHANGELOG.d/*.md` als gültigem Beleg,
 - versehentliches Zurückstellen von Gate 3 auf Warnmodus,
+- erneutes Falsch-Rot bei GitHub-erzeugten Merge-/PR-Commits auf Push,
 - Abweichung zwischen Workflow und Dokumentation.
 
 ## claim-lint.yml
