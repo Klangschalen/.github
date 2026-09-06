@@ -104,6 +104,39 @@ def test_commit_contract(workflow: str) -> None:
             raise AssertionError(f"Ungueltiger Titel wird akzeptiert: {subject}")
 
 
+def test_post_merge_push_contract(workflow: str) -> None:
+    require(
+        workflow,
+        'if [ "${{ github.event_name }}" = "push" ]; then',
+        "Push-spezifische Gate-3-Behandlung",
+    )
+    require(
+        workflow,
+        'git rev-list --parents -n1 "$SOURCE_COMMIT"',
+        "Erkennung echter Merge-Commits",
+    )
+    require(
+        workflow,
+        'committer_email="$(git log -1 --pretty=%ce "$SOURCE_COMMIT")"',
+        "Erkennung GitHub-erzeugter PR-Commits",
+    )
+    require(
+        workflow,
+        '"noreply@github.com"',
+        "GitHub-Commit-Erkennung",
+    )
+    require(
+        workflow,
+        '[[ "$message" =~ \\(#[0-9]+\\)$ ]]',
+        "PR-Nummer im GitHub-Commit-Titel",
+    )
+    require(
+        workflow,
+        "PR-Head wurde im pull_request-Gate geprueft",
+        "Begruendung fuer Merge-Commit-Ausnahme",
+    )
+
+
 def test_changelog_contract(workflow: str) -> None:
     pattern = extract_pattern(workflow, "CHANGELOG_PATH_PATTERN")
     valid = (
@@ -152,12 +185,14 @@ def main() -> int:
 
     test_exact_pr_head(workflow)
     test_commit_contract(workflow)
+    test_post_merge_push_contract(workflow)
     test_changelog_contract(workflow)
     test_documentation(workflow, docs)
 
     print("Doku-Lint-Vertrag: PASS")
     print(f"Gepruefte Commit-Typen: {', '.join(sorted(extract_default_types(workflow)))}")
     print("Changelog-Belege: CHANGELOG.md oder CHANGELOG.d/*.md")
+    print("Push-Merge-Commits: synthetischer GitHub-Titel wird nicht doppelt blockierend geprueft")
     return 0
 
 
