@@ -13,6 +13,9 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Geändert
 
+- fix(doku-lint): GitHub-erzeugte Merge-/PR-Commits werden auf dem Push nach einem bereits geprüften Pull Request nicht erneut wegen ihres synthetischen Titels blockiert; echte direkte Push-Commits bleiben hart am Conventional-Commit-Format geprüft
+- test(doku-lint): Push-/Merge-Erkennung und GitHub-PR-Commit-Ausnahme sind im Vertragscheck abgesichert
+- docs(doku-lint): das Verhalten nach Merge sowie die Grenze zu echten direkten Pushes ist dokumentiert
 - fix(doku-lint): Code-Änderungen akzeptieren wahlweise `CHANGELOG.md` oder versionierte Schnipsel unter `CHANGELOG.d/*.md`
 - test(doku-lint): positive und negative Pfadfälle sichern den Changelog-Beleg gegen Rückfälle
 - docs(doku-lint): Einsatz und Grenzen von Changelog-Schnipseln erklären
