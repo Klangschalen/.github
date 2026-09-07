@@ -1,8 +1,12 @@
-name: HWG Hauptzweig-Deckung
+name: HWG Kernspiegel-Konsumentenabdeckung
 
-# Autoritativer Cross-Repo-Nachweis: Anders als ein einzelnes Repository sieht
-# dieser Lauf sowohl die kanonische Quelle als auch den produktiven Verbraucher.
-# Fehlender Zugriff ist ein Fehler und darf niemals als PASS erscheinen.
+# Autoritativer Nachweis fuer den letzten Teil der Kette:
+# Git-Kernspiegel (quality-system) -> alle bekannten GitHub-Verbraucher.
+# Die vorgelagerte Kette Supabase -> Kernspiegel sowie die Vollabdeckung aller
+# riskanten Begriffe prueft quality-system/text-daten-drift.yml. Fehlender
+# Cross-Repo-Zugriff auf einen dieser vier Verbraucher ist hier ein Fehler und
+# darf niemals als PASS erscheinen. settext-studio ist nur lokal vorhanden und
+# bleibt deshalb Teil des autoritativen Nachtlaufs.
 
 on:
   workflow_dispatch:
@@ -11,16 +15,13 @@ on:
   push:
     paths:
       - ".github/workflows/hwg-cross-repo-coverage.yml"
-  pull_request:
-    paths:
-      - ".github/workflows/hwg-cross-repo-coverage.yml"
 
 permissions:
   contents: read
 
 jobs:
   hwg-deckung:
-    name: quality-system gegen pl-sets pruefen
+    name: Kernspiegel gegen alle Verbraucher pruefen
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -30,6 +31,7 @@ jobs:
           repository: Klangschalen/quality-system
           path: quality-system
           token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Produktiven Verbraucher auschecken (pl-sets)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,16 +39,44 @@ jobs:
           repository: Klangschalen/pl-sets
           path: pl-sets
           token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Produktiven Verbraucher auschecken (adk-agents)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/adk-agents
+          path: adk-agents
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Produktiven Verbraucher auschecken (unified-agent-system)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/unified-agent-system
+          path: unified-agent-system
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Produktiven Verbraucher auschecken (claude-config)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/claude-config
+          path: .claude
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Deckungslogik gegen falsches Gruen testen
         run: |
-          python3 -m pip install --quiet pytest
+          python3 -m pip install --disable-pip-version-check pytest==9.1.1
           python3 -m pytest quality-system/tests/test_check_textdaten_drift.py -q
 
-      - name: Gemergte Hauptstaende autoritativ pruefen
+      - name: Gemergte Kernspiegel und Verbraucher autoritativ pruefen
         # Der Checker darf hier nicht in seinen absichtlich toleranten
         # GitHub-Einzelrepo-Modus fallen. Fehlt ein Checkout, muss rc=2 blockieren.
         env:
           DRIFT_TEST_KONSUMENTEN_WURZEL: ${{ github.workspace }}
+          # Vier Verbraucher sind GitHub-Repositories. settext-studio ist ein
+          # lokales Arbeitsverzeichnis und bleibt im Nachtlauf verpflichtend.
+          DRIFT_COVERAGE_SCOPE: github
           GITHUB_ACTIONS: ""
         run: python3 quality-system/tests/check-textdaten-drift.py
