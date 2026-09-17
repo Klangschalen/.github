@@ -132,9 +132,76 @@ def test_post_merge_push_contract(workflow: str) -> None:
     )
     require(
         workflow,
-        "PR-Head wurde im pull_request-Gate geprueft",
-        "Begruendung fuer Merge-Commit-Ausnahme",
+        "Gate 3 + Gate 3b) blockierend geprueft",
+        "Begruendung fuer Merge-Commit-Ausnahme verweist auf Gate 3b",
     )
+
+
+def extract_step(workflow: str, step_name: str) -> str:
+    """Isoliert den Text EINES Steps (bis zum naechsten '      - name:' oder Dateiende).
+
+    Ohne diese Isolierung koennen require()-Pruefungen an einem Merkmal eines
+    ANDEREN Steps vorbeischauen - z.B. traegt Gate 2 ebenfalls
+    "if: github.event_name == 'pull_request'". Eine reine Teilstring-Suche
+    ueber die gesamte Datei wuerde das nicht von Gate 3b unterscheiden.
+    """
+    start = workflow.index(f"      - name: {step_name}")
+    rest = workflow[start + len(f"      - name: {step_name}"):]
+    next_step = re.search(r"\n      - name:", rest)
+    end = start + len(f"      - name: {step_name}") + (next_step.start() if next_step else len(rest))
+    return workflow[start:end]
+
+
+def test_gate_3b_pr_title_contract(workflow: str) -> None:
+    """Gate 3b prueft den PR-Titel, den Gate 3 nie sieht (Squash-Merge-Luecke)."""
+    require(
+        workflow,
+        "Gate 3b - Conventional PR-Titel",
+        "Gate-3b-Schritt fehlt",
+    )
+
+    gate_3b_step = extract_step(workflow, "Gate 3b - Conventional PR-Titel")
+    require(
+        gate_3b_step,
+        "if: github.event_name == 'pull_request'",
+        "Gate 3b muss auf pull_request begrenzt sein",
+    )
+    require(
+        gate_3b_step,
+        "PR_TITLE: ${{ github.event.pull_request.title }}",
+        "Gate 3b muss den echten PR-Titel aus dem Event lesen",
+    )
+    require(
+        gate_3b_step,
+        'if [[ "$PR_TITLE" =~ $CONVENTIONAL_SUBJECT_PATTERN ]]',
+        "Gate 3b muss dasselbe Muster wie Gate 3 verwenden",
+    )
+    require(
+        gate_3b_step,
+        "COMMIT_FORMAT_WARN_ONLY: ${{ inputs.commit_format_warn_only }}",
+        "Gate 3b muss denselben Schalter wie Gate 3 respektieren",
+    )
+
+    # Gate 3b muss als eigener Schritt NACH Gate 3 stehen, nicht dessen
+    # bestehende Pruefung ersetzen - sonst verliert Gate 3 seine Wirkung auf
+    # echte direkte Pushes.
+    gate3_index = workflow.index("Gate 3 - Conventional Head-Commit")
+    gate3b_index = workflow.index("Gate 3b - Conventional PR-Titel")
+    if gate3b_index < gate3_index:
+        raise AssertionError("Gate 3b darf Gate 3 nicht vorausgehen oder ersetzen")
+
+    pattern = extract_pattern(workflow, "CONVENTIONAL_SUBJECT_PATTERN")
+    # Der reale Anlass: alle Branch-Commits konform, der PR-Titel nicht.
+    real_case_title = "Produktdaten-Lücke messen: die Angaben stehen im Text, aber nicht im Schema (#19)"
+    if pattern.match(real_case_title):
+        raise AssertionError(
+            "Der PR-Titel aus dem realen Anlass (website-audit PR #19) muesste "
+            "von Gate 3b abgelehnt werden, wird aber vom Muster akzeptiert"
+        )
+    if not pattern.match("feat(audit): Luecke zwischen Produkttext und Product-Schema messen"):
+        raise AssertionError(
+            "Ein konformer PR-Titel darf vom selben Muster nicht abgelehnt werden"
+        )
 
 
 def test_changelog_contract(workflow: str) -> None:
@@ -174,6 +241,8 @@ def test_documentation(workflow: str, docs: str) -> None:
     require(docs, "`policy:`", "Dokumentation des Richtlinien-Typs")
     require(docs, "`commit_format_warn_only: false`", "Dokumentation des harten Gates")
     require(docs, "`CHANGELOG.d/", "Dokumentation der Changelog-Schnipsel")
+    require(docs, "Gate 3b", "Dokumentation von Gate 3b")
+    require(docs, "PR-Titel", "Dokumentation der PR-Titel-Pruefung")
 
     for commit_type in sorted(extract_default_types(workflow)):
         require(docs, f"`{commit_type}`", f"Dokumentierter Commit-Typ {commit_type}")
@@ -186,6 +255,7 @@ def main() -> int:
     test_exact_pr_head(workflow)
     test_commit_contract(workflow)
     test_post_merge_push_contract(workflow)
+    test_gate_3b_pr_title_contract(workflow)
     test_changelog_contract(workflow)
     test_documentation(workflow, docs)
 
@@ -193,6 +263,7 @@ def main() -> int:
     print(f"Gepruefte Commit-Typen: {', '.join(sorted(extract_default_types(workflow)))}")
     print("Changelog-Belege: CHANGELOG.md oder CHANGELOG.d/*.md")
     print("Push-Merge-Commits: synthetischer GitHub-Titel wird nicht doppelt blockierend geprueft")
+    print("Gate 3b: PR-Titel wird vor dem Squash-Merge gegen das Conventional-Commit-Format geprueft")
     return 0
 
 
