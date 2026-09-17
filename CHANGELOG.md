@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-17 - Der Deckungs-Waechter war zu 80 Prozent blind
+
+`hwg-cross-repo-coverage.yml` las genau **einen von fuenf** Konsumenten - und schrieb das
+sogar hin: `Deckung: HWG-Kernspiegel 1/5 Konsumenten gelesen`, dazu vier Mal
+`Konsument nicht im Checkout (nicht pruefbar)`. Ausgecheckt wurden nur `quality-system`
+(die Quelle) und `pl-sets`.
+
+**Was das gekostet hat, ist belegbar:** Als der HWG-Spiegel am 31.08.2026 in VIER Repos
+gleichzeitig veraltete, sah dieser Ablauf nur `pl-sets`. Die drei anderen (`adk-agents`,
+`agenten-systeme`, `unified-agent-system`) fielen erst am 17.09. auf - siebzehn Tage spaeter
+und ueber einen ganz anderen Weg. Haette er alle fuenf gelesen, waere der Drift sofort in
+voller Breite sichtbar gewesen.
+
+Ergaenzt: `adk-agents`, `unified-agent-system`, `claude-config`, `settext-studio`.
+
+`continue-on-error` ist Absicht: Ein Konsument, der sich nicht auschecken laesst (fehlendes
+Token, umbenanntes oder geloeschtes Repo), darf den ganzen Lauf nicht killen. Er erscheint
+dann wie bisher als "nicht im Checkout" im Deckungsbericht - weniger Abdeckung, aber nie
+falsches Gruen.
+
+Zu `settext-studio` ausdruecklich: Ob dieses Repo noch existiert, liess sich am 17.09. **nicht**
+pruefen - es liegt ausserhalb des Zugriffs der messenden Sitzung. Der Checkout steht trotzdem
+drin, weil `continue-on-error` den Fehlerfall abfaengt. Die drei anderen wurden vor dem Einbau
+geprueft: alle erreichbar, keines archiviert.
+
+
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),

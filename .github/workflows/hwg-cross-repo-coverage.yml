@@ -38,6 +38,53 @@ jobs:
           path: pl-sets
           token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # Seit 17.09.2026: Auch die vier uebrigen Konsumenten auschecken.
+      # Vorher las dieser Ablauf genau EINEN von fuenf und schrieb das sogar hin
+      # ("Deckung: HWG-Kernspiegel 1/5 Konsumenten gelesen", vier Mal "Konsument nicht im
+      # Checkout"). Er war damit zu 80 Prozent blind: Als der HWG-Spiegel am 31.08.2026 in
+      # VIER Repos gleichzeitig veraltete, sah er nur pl-sets. Die drei anderen fielen erst
+      # siebzehn Tage spaeter ueber einen ganz anderen Weg auf.
+      #
+      # continue-on-error ist Absicht: Ein Konsument, der sich nicht auschecken laesst (fehlendes
+      # Token, umbenanntes oder geloeschtes Repo), darf den ganzen Lauf nicht killen. Er
+      # erscheint dann wie bisher als "nicht im Checkout (nicht pruefbar)" im Deckungsbericht -
+      # weniger Abdeckung, aber nie falsches Gruen.
+      - name: Verbraucher auschecken (adk-agents)
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/adk-agents
+          path: adk-agents
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Verbraucher auschecken (unified-agent-system)
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/unified-agent-system
+          path: unified-agent-system
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Verbraucher auschecken (claude-config)
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/claude-config
+          path: claude-config
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # settext-studio: Ob dieses Repo noch existiert, liess sich am 17.09. nicht pruefen -
+      # es liegt ausserhalb des Zugriffs der messenden Sitzung. Der Checkout steht trotzdem
+      # hier: Gibt es das Repo, wird es ab jetzt mitgelesen; gibt es es nicht, faengt
+      # continue-on-error das ab und der Deckungsbericht nennt es weiter als ungeprueft.
+      - name: Verbraucher auschecken (settext-studio)
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Klangschalen/settext-studio
+          path: settext-studio
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
       - name: Deckungslogik gegen falsches Gruen testen
         run: |
           python3 -m pip install --quiet pytest
