@@ -27,6 +27,17 @@ Der Push-Lauf darf deshalb keinen falschen roten Zustand erzeugen, nur weil GitH
 einen neuen Titel bildet. Ein normaler direkter Push ohne diesen GitHub-Nachweis muss weiter
 das Conventional-Commit-Format erfüllen.
 
+### Merge-Commit am PR-Kopf (nach "Update branch")
+
+Drückt jemand im Pull Request auf "Update branch", erzeugt GitHub einen Merge-Commit
+`Merge branch 'main' into <zweig>` als neuen Kopf-Commit. Gate 3 bewertet diesen
+synthetischen Titel bei `pull_request` seit dem 28.09.2026 nicht mehr: er stammt nicht vom
+Autor und wird beim Merge nie zum Commit-Titel auf dem Zielzweig. Vorher wurde jeder so
+aktualisierte PR rot (Klangschalen/unified-agent-system PR 18, Lauf 36428109273:
+`Head-Commit ... hat kein Conventional-Commit-Format: 'Merge branch 'master' into ...'`).
+Der PR-Titel bleibt durch Gate 3b blockierend geprüft, ein gewöhnlicher Kopf-Commit
+weiterhin durch Gate 3.
+
 ### Gate 3b - PR-Titel (schließt die Squash-Merge-Lücke)
 
 Die Push-Ausnahme oben setzt voraus, dass "der eingereichte PR-Head bereits blockierend

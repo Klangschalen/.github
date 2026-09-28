@@ -152,6 +152,29 @@ def extract_step(workflow: str, step_name: str) -> str:
     return workflow[start:end]
 
 
+def test_gate_3_pr_merge_head_contract(workflow: str) -> None:
+    """Ein Merge-Commit am PR-Kopf ('Update branch') darf Gate 3 nicht rot machen."""
+    gate_3_step = extract_step(workflow, "Gate 3 - Conventional Head-Commit")
+    require(
+        gate_3_step,
+        'if [ "${{ github.event_name }}" = "pull_request" ] && [ "$parent_count" -gt 1 ]; then',
+        "Gate 3 muss bei pull_request einen Merge-Commit am PR-Kopf erkennen",
+    )
+    require(
+        gate_3_step,
+        "PR-Titel wird in Gate 3b blockierend geprueft",
+        "Begruendung der PR-Merge-Kopf-Ausnahme verweist auf Gate 3b",
+    )
+    # Die Elternzahl muss VOR der Ausnahme berechnet werden, nicht erst im Push-Zweig.
+    berechnung = gate_3_step.index('git rev-list --parents -n1 "$SOURCE_COMMIT"')
+    ausnahme = gate_3_step.index('= "pull_request" ] && [ "$parent_count" -gt 1 ]')
+    if berechnung > ausnahme:
+        raise AssertionError("parent_count wird erst nach der PR-Merge-Kopf-Ausnahme berechnet")
+    # Die Ausnahme gilt NUR fuer Merge-Commits: ein gewoehnlicher Kopf-Commit bleibt geprueft.
+    if '= "pull_request" ]; then\n            exit 0' in gate_3_step:
+        raise AssertionError("Gate 3 darf bei pull_request nicht pauschal aussteigen")
+
+
 def test_gate_3b_pr_title_contract(workflow: str) -> None:
     """Gate 3b prueft den PR-Titel, den Gate 3 nie sieht (Squash-Merge-Luecke)."""
     require(
@@ -255,6 +278,7 @@ def main() -> int:
     test_exact_pr_head(workflow)
     test_commit_contract(workflow)
     test_post_merge_push_contract(workflow)
+    test_gate_3_pr_merge_head_contract(workflow)
     test_gate_3b_pr_title_contract(workflow)
     test_changelog_contract(workflow)
     test_documentation(workflow, docs)
@@ -264,6 +288,7 @@ def main() -> int:
     print("Changelog-Belege: CHANGELOG.md oder CHANGELOG.d/*.md")
     print("Push-Merge-Commits: synthetischer GitHub-Titel wird nicht doppelt blockierend geprueft")
     print("Gate 3b: PR-Titel wird vor dem Squash-Merge gegen das Conventional-Commit-Format geprueft")
+    print("Gate 3 bei pull_request: Merge-Commit am PR-Kopf (Update branch) wird nicht rot bewertet")
     return 0
 
 

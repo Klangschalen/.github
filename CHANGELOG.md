@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-28 - Gate 3 macht aktualisierte Pull Requests nicht mehr rot
+
+Wer im Pull Request "Update branch" drueckt, bekommt von GitHub den Kopf-Commit
+`Merge branch 'main' into <zweig>`. Gate 3 bewertete diesen synthetischen Titel bei
+`pull_request` wie einen Autoren-Commit und meldete ihn rot - belegt an
+Klangschalen/unified-agent-system PR 18 (Lauf 36428109273, 28.09.2026: "Head-Commit ...
+hat kein Conventional-Commit-Format: 'Merge branch 'master' into claude/...'"). Die
+Push-Ausnahme fuer Merge-Commits gab es schon; sie galt nur nicht fuer `pull_request`.
+
+Jetzt gilt sie auch dort: ein Merge-Commit am PR-Kopf wird nicht bewertet, der PR-Titel
+bleibt durch Gate 3b blockierend geprueft, ein gewoehnlicher Kopf-Commit weiter durch Gate 3.
+Ersetzt den Konflikt-Entwurf PR 19 (02.09.2026), dessen PR-Titel-Teil PR 28 bereits als
+Gate 3b abdeckt. Vertragstest `scripts/test_doku_lint_contract.py` um
+`test_gate_3_pr_merge_head_contract` ergaenzt (Mutationsprobe: Ausnahme entfernt -> FAIL).
+
 ## 2026-09-17 - Der Deckungs-Waechter war zu 80 Prozent blind
 
 `hwg-cross-repo-coverage.yml` las genau **einen von fuenf** Konsumenten - und schrieb das
