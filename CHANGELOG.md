@@ -11,6 +11,15 @@ ein lokales Arbeitsverzeichnis, kein Repo. Jetzt: agenten-systeme wird ausgechec
 settext-studio-Checkout ist weg. Erwartung: "PASS (GitHub-Umfang) - 5/5 GitHub-Verbraucher".
 Gefunden ueber den Waechter ueber den Waechtern (zentrale Issue 266, Buendel 1, nach
 Korrektur).
+## 2026-09-28 - Runtime-Audit schreibt sein Sammel-Issue wieder mit dem Lauf-Token
+
+Seit ORG_AUDIT_TOKEN gesetzt ist (28.09.2026, bewusst nur lesend), scheiterte der
+Schritt "Sammel-Issue erstellen oder aktualisieren" in `org-action-runtime-audit.yml`:
+"Resource not accessible by personal access token (updateIssue)" (Laeufe 36462507615,
+36462731681). Vorher griff der Rueckfall auf GITHUB_TOKEN mit `issues: write`. Jetzt
+liest der Audit org-weit mit ORG_AUDIT_TOKEN und schreibt das Issue im eigenen Repo
+mit `github.token`. Ein Lese-Token darf nie zum Schreib-Token werden, nur weil es da ist.
+
 ## 2026-09-28 - Archify-Löschschutz: Schutzlogik zuerst, Workflow danach
 
 Pull Request 20 (02.09.2026) bringt den organisationsweiten Archify-Löschschutz:
