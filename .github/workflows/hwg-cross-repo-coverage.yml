@@ -115,7 +115,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Klangschalen/agenten-systeme
-          path: agenten-systeme
+          # Der Checker loest den Ordner im Test-Modus als <Wurzel>/"Agenten Systeme"
+          # auf (Name des ersten Kandidaten "D:/Agenten Systeme"); der erste
+          # Beweislauf mit path "agenten-systeme" blieb deshalb bei 4/6
+          # (Lauf 36462507604). Der Pfad muss so heissen, wie der Checker sucht.
+          path: Agenten Systeme
           token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Deckungslogik gegen falsches Gruen testen
