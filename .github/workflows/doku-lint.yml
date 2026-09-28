@@ -8,6 +8,14 @@ name: Doku-Lint (zentral, wiederverwendbar)
 # Merge-/PR-Commits werden nicht erneut am synthetischen Titel abgelehnt,
 # weil der eingereichte PR-Head bereits im pull_request-Lauf geprueft wurde.
 #
+# Bei pull_request gilt dieselbe Ausnahme fuer einen Merge-Commit am PR-Kopf
+# (seit 28.09.2026): GitHubs Knopf "Update branch" erzeugt "Merge branch 'main'
+# into <zweig>" als neuen Kopf-Commit. Der ist kein Commit des Autors und wird
+# beim Merge nie zum Titel auf dem Zielzweig; ihn zu bewerten machte jeden
+# aktualisierten PR rot (belegt: Klangschalen/unified-agent-system PR 18,
+# Lauf 36428109273, 28.09.2026). Was zum Commit-Titel werden kann - der letzte
+# echte Branch-Commit oder der PR-Titel - prueft Gate 3 bzw. Gate 3b weiterhin.
+#
 # Gate 3b schliesst die Luecke, die dieser Verzicht sonst offen liesse: bei
 # einem Squash-Merge (GitHub-Default) wird NICHT der letzte Branch-Commit zum
 # Titel auf dem Zielzweig, sondern der PR-TITEL. Ein PR, dessen einzelne
@@ -164,9 +172,15 @@ jobs:
           echo "Gepruefter Commit-Titel: $message"
           echo "Erlaubte Typen: $ALLOWED_COMMIT_TYPES"
 
+          parent_line="$(git rev-list --parents -n1 "$SOURCE_COMMIT")"
+          parent_count=$(( $(awk '{print NF}' <<< "$parent_line") - 1 ))
+
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "$parent_count" -gt 1 ]; then
+            echo "OK - Merge-Commit am PR-Kopf (z.B. GitHubs 'Merge branch main into ...' nach 'Update branch'): der synthetische Merge-Titel wird nicht bewertet, der PR-Titel wird in Gate 3b blockierend geprueft."
+            exit 0
+          fi
+
           if [ "${{ github.event_name }}" = "push" ]; then
-            parent_line="$(git rev-list --parents -n1 "$SOURCE_COMMIT")"
-            parent_count=$(( $(awk '{print NF}' <<< "$parent_line") - 1 ))
             committer_email="$(git log -1 --pretty=%ce "$SOURCE_COMMIT")"
 
             if [ "$parent_count" -gt 1 ]; then
