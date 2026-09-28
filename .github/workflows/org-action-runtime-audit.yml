@@ -58,7 +58,14 @@ jobs:
       - name: Sammel-Issue erstellen oder aktualisieren
         if: always() && hashFiles('action-runtime-report.md') != ''
         env:
-          GH_TOKEN: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          # Das Sammel-Issue liegt in DIESEM Repo; dafuer reicht das Lauf-Token mit
+          # issues: write (siehe permissions oben). ORG_AUDIT_TOKEN ist seit dem
+          # 28.09.2026 gesetzt und bewusst nur lesend (Contents/PR/Issues/Actions
+          # Read) - mit ihm scheiterte dieser Schritt ab dem ersten Lauf danach:
+          # "Resource not accessible by personal access token (updateIssue)"
+          # (Laeufe 36462507615, 36462731681). Lesen org-weit: ORG_AUDIT_TOKEN,
+          # schreiben hier: github.token.
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           TITLE="Org Action-Runtime-Audit (automatisch)"
