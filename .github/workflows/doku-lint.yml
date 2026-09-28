@@ -8,6 +8,17 @@ name: Doku-Lint (zentral, wiederverwendbar)
 # Merge-/PR-Commits werden nicht erneut am synthetischen Titel abgelehnt,
 # weil der eingereichte PR-Head bereits im pull_request-Lauf geprueft wurde.
 #
+# Gate 3b schliesst die Luecke, die dieser Verzicht sonst offen liesse: bei
+# einem Squash-Merge (GitHub-Default) wird NICHT der letzte Branch-Commit zum
+# Titel auf dem Zielzweig, sondern der PR-TITEL. Ein PR, dessen einzelne
+# Commits alle konform sind, aber dessen Titel es nicht ist, waere frueher
+# gruen gemergt und haette trotzdem einen nicht-konformen Commit auf dem
+# Zielzweig hinterlassen (siehe Klangschalen/website-audit PR #19,
+# 2026-09-17: Commits "feat(audit): ...", "fix(audit): ..." konform, aber der
+# PR-Titel "Produktdaten-Luecke messen: ..." nicht - genau dieser Titel wurde
+# zum Commit auf dem Standardzweig). Gate 3b prueft deshalb zusaetzlich den
+# PR-Titel selbst, bevor gemergt werden kann.
+#
 # Beispiel:
 #
 #   permissions:
@@ -35,7 +46,7 @@ on:
         type: boolean
         default: true
       commit_format_warn_only:
-        description: "Gate 3: wenn true, nur Warnung statt Fehler"
+        description: "Gate 3+3b: wenn true, nur Warnung statt Fehler"
         type: boolean
         default: false
       allowed_commit_types:
@@ -164,7 +175,7 @@ jobs:
             fi
 
             if [[ "$committer_email" == *"noreply@github.com" ]] && [[ "$message" =~ \(#[0-9]+\)$ ]]; then
-              echo "OK - GitHub-erzeugter PR-Commit auf Push: PR-Head wurde bereits blockierend geprueft."
+              echo "OK - GitHub-erzeugter PR-Commit auf Push: PR-Head bzw. PR-Titel wurde bereits im pull_request-Gate (Gate 3 + Gate 3b) blockierend geprueft."
               exit 0
             fi
           fi
@@ -200,6 +211,57 @@ jobs:
           fi
 
           hint="Erlaubt: $ALLOWED_COMMIT_TYPES. Richtlinien nutzen 'policy: ...' oder 'docs(policy): ...'."
+          if [ "$COMMIT_FORMAT_WARN_ONLY" = "true" ]; then
+            echo "::warning::$problem. $hint"
+          else
+            echo "::error::$problem. $hint"
+            exit 1
+          fi
+
+      - name: Gate 3b - Conventional PR-Titel (wird bei Squash-Merge zum Commit-Titel)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          COMMIT_FORMAT_WARN_ONLY: ${{ inputs.commit_format_warn_only }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          echo "Gepruefter PR-Titel: $PR_TITLE"
+          echo "Erlaubte Typen: $ALLOWED_COMMIT_TYPES"
+          echo "Grund: GitHub uebernimmt bei einem Squash-Merge den PR-Titel unveraendert als Commit-Titel auf dem Zielzweig. Gate 3 prueft nur den letzten Branch-Commit - der kann konform sein, waehrend der PR-Titel es nicht ist. Ohne diese Pruefung wuerde genau dieser nicht-konforme Titel ungeprueft auf den Zielzweig gelangen."
+
+          format_ok=false
+          commit_type=""
+          if [[ "$PR_TITLE" =~ $CONVENTIONAL_SUBJECT_PATTERN ]]; then
+            format_ok=true
+            commit_type="${BASH_REMATCH[1]}"
+          fi
+
+          type_ok=false
+          if [ "$format_ok" = "true" ]; then
+            IFS=',' read -ra allowed_types <<< "$ALLOWED_COMMIT_TYPES"
+            for allowed_type in "${allowed_types[@]}"; do
+              allowed_type="${allowed_type//[[:space:]]/}"
+              if [ "$commit_type" = "$allowed_type" ]; then
+                type_ok=true
+                break
+              fi
+            done
+          fi
+
+          if [ "$format_ok" = "true" ] && [ "$type_ok" = "true" ]; then
+            echo "OK - Conventional PR-Titel mit Typ '$commit_type'"
+            exit 0
+          fi
+
+          if [ "$format_ok" != "true" ]; then
+            problem="PR-Titel hat kein Conventional-Commit-Format: '$PR_TITLE'"
+          else
+            problem="PR-Titel-Typ '$commit_type' ist nicht erlaubt: '$PR_TITLE'"
+          fi
+
+          hint="Erlaubt: $ALLOWED_COMMIT_TYPES. Der PR-Titel wird bei Squash-Merge zum Commit-Titel - deshalb gilt hier dieselbe Regel wie fuer Gate 3."
           if [ "$COMMIT_FORMAT_WARN_ONLY" = "true" ]; then
             echo "::warning::$problem. $hint"
           else

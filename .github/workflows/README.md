@@ -2,11 +2,13 @@
 
 ## doku-lint.yml
 
-Der wiederverwendbare Doku-Lint prüft drei getrennte Gates:
+Der wiederverwendbare Doku-Lint prüft vier getrennte Gates:
 
 1. Pflicht-Dateien sind vorhanden.
 2. Code-Änderungen besitzen einen Changelog-Beleg.
 3. Der letzte Quell-Commit nutzt ein erlaubtes Conventional-Commit-Format.
+4. Bei Pull Requests: der **PR-Titel selbst** nutzt ebenfalls ein erlaubtes
+   Conventional-Commit-Format (Gate 3b).
 
 Bei Pull Requests lädt der Workflow immer den **exakten PR-Head**. Er prüft
 nicht den von GitHub erzeugten synthetischen Merge-Commit. Damit bleibt das
@@ -24,6 +26,28 @@ Der Grund: Der eingereichte PR-Head wurde bereits im `pull_request`-Lauf blockie
 Der Push-Lauf darf deshalb keinen falschen roten Zustand erzeugen, nur weil GitHub beim Merge
 einen neuen Titel bildet. Ein normaler direkter Push ohne diesen GitHub-Nachweis muss weiter
 das Conventional-Commit-Format erfüllen.
+
+### Gate 3b - PR-Titel (schließt die Squash-Merge-Lücke)
+
+Die Push-Ausnahme oben setzt voraus, dass "der eingereichte PR-Head bereits blockierend
+geprüft wurde" - das gilt aber nur für den **letzten Branch-Commit**. Bei einem
+Squash-Merge (dem GitHub-Standard) wird nicht dieser Branch-Commit zum Commit auf dem
+Zielzweig, sondern der **PR-Titel selbst**, unverändert. Ein Pull Request, dessen einzelne
+Commits alle konform sind, aber dessen Titel es nicht ist, lief deshalb ungeprüft durch das
+Gate und hinterließ einen nicht-konformen Commit auf `main`/`master`.
+
+Konkret beobachtet: `Klangschalen/website-audit` PR #19 (17.09.2026). Die Commits
+`feat(audit): Luecke zwischen Produkttext und Product-Schema messen`,
+`fix(audit): beide Schreibrichtungen lesen ...` und `fix(audit): mehrere Werkstoffe
+erkennen ...` sind alle konform. Der PR-Titel `Produktdaten-Lücke messen: die Angaben
+stehen im Text, aber nicht im Schema (#19)` ist es nicht - und genau dieser Titel wurde
+beim Squash-Merge zum Commit auf `master`.
+
+Gate 3b prüft deshalb bei jedem `pull_request`-Lauf zusätzlich `github.event.pull_request.title`
+gegen dasselbe Muster und dieselbe Typenliste wie Gate 3, und respektiert denselben Schalter
+`commit_format_warn_only`. Damit gilt die Annahme der Push-Ausnahme wieder: Was beim Merge zum
+Commit-Titel werden kann - der letzte Branch-Commit **oder** der PR-Titel - wurde vorher
+blockierend geprüft.
 
 ### Changelog-Belege
 
@@ -62,6 +86,7 @@ Der Standard erlaubt diese Typen:
 
 Richtlinien können direkt mit `policy:` beginnen. Alternativ passt
 `docs(policy):`, wenn vor allem die Dokumentation einer Regel geändert wird.
+Dieselben Typen gelten für den PR-Titel (Gate 3b).
 
 Beispiele:
 
@@ -106,7 +131,7 @@ Version für einen bereits geprüften Caller.
 
 - `warn_only: true` macht Gate 1 und Gate 2 zu Hinweisen.
 - `warn_only: false` blockiert bei fehlenden Dateien oder fehlendem Changelog-Beleg.
-- `commit_format_warn_only: false` blockiert Gate 3. Das ist der Standard.
+- `commit_format_warn_only: false` blockiert Gate 3 und Gate 3b. Das ist der Standard.
 - `commit_format_warn_only: true` dient nur einer klar begrenzten Übergangsphase.
 
 Caller dürfen `allowed_commit_types` überschreiben. Jede Abweichung muss im
@@ -119,7 +144,7 @@ Regex scheitern.
 Die Ausgabe nennt:
 
 - den geprüften Quell-Commit,
-- den gefundenen Commit-Titel,
+- den gefundenen Commit-Titel bzw. PR-Titel,
 - den nicht erlaubten Typ,
 - alle erlaubten Typen,
 - ein passendes Beispiel für Richtlinien,
@@ -140,6 +165,8 @@ Rückfälle:
 - Entfernung von `CHANGELOG.d/*.md` als gültigem Beleg,
 - versehentliches Zurückstellen von Gate 3 auf Warnmodus,
 - erneutes Falsch-Rot bei GitHub-erzeugten Merge-/PR-Commits auf Push,
+- Entfernung oder Umgehung von Gate 3b, wodurch ein nicht-konformer PR-Titel
+  bei einem Squash-Merge wieder unentdeckt auf den Zielzweig gelangen könnte,
 - Abweichung zwischen Workflow und Dokumentation.
 
 ## claim-lint.yml
