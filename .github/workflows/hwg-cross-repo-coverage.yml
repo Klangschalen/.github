@@ -100,16 +100,22 @@ jobs:
           path: claude-config
           token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # settext-studio: Ob dieses Repo noch existiert, liess sich am 17.09. nicht pruefen -
-      # es liegt ausserhalb des Zugriffs der messenden Sitzung. Der Checkout steht trotzdem
-      # hier: Gibt es das Repo, wird es ab jetzt mitgelesen; gibt es es nicht, faengt
-      # continue-on-error das ab und der Deckungsbericht nennt es weiter als ungeprueft.
-      - name: Verbraucher auschecken (settext-studio)
+      # Seit 28.09.2026: agenten-systeme statt settext-studio. Der Deckungs-Checker
+      # (quality-system/tests/check-textdaten-drift.py, HWG_KONSUMENTEN) fuehrt sechs
+      # Verbraucher: fuenf GitHub-Repositories und EIN lokales Arbeitsverzeichnis
+      # (settext-studio, ein Ordner neben agenten-systeme auf Franks Rechner, kein Repo).
+      # Bis heute fehlte hier der fuenfte GitHub-Verbraucher agenten-systeme, dafuer stand
+      # ein Checkout fuer "Klangschalen/settext-studio", das GitHub mit "Not Found"
+      # beantwortet (Lauf 36461139499). Ergebnis jeden Tag: "HWG-Kernspiegel 4/6",
+      # Rueckgabewert 2, rot - auch mit gesetztem ORG_AUDIT_TOKEN. Mit agenten-systeme
+      # sind 5/6 lesbar; das fehlende sechste ist als lokal markiert, und genau dann
+      # meldet der Checker "PASS (GitHub-Umfang)".
+      - name: Verbraucher auschecken (agenten-systeme)
         continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Klangschalen/settext-studio
-          path: settext-studio
+          repository: Klangschalen/agenten-systeme
+          path: agenten-systeme
           token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Deckungslogik gegen falsches Gruen testen
@@ -122,7 +128,7 @@ jobs:
         # GitHub-Einzelrepo-Modus fallen. Fehlt ein Checkout, muss rc=2 blockieren.
         env:
           DRIFT_TEST_KONSUMENTEN_WURZEL: ${{ github.workspace }}
-          # Vier Verbraucher sind GitHub-Repositories. settext-studio ist ein
+          # Fuenf Verbraucher sind GitHub-Repositories. settext-studio ist ein
           # lokales Arbeitsverzeichnis und bleibt im Nachtlauf verpflichtend.
           DRIFT_COVERAGE_SCOPE: github
           GITHUB_ACTIONS: ""
