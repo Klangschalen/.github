@@ -1,7 +1,33 @@
 name: Doku-Lint (zentral, wiederverwendbar)
 
-# Reusable Workflow - wird von anderen Repos per `uses:` eingebunden.
-# Beispiel-Aufruf im Caller-Repo:
+# Wiederverwendbarer Workflow fuer Klangschalen-Repositories.
+# Bei Pull Requests wird immer der exakte Quell-Commit geprueft, niemals der
+# von GitHub erzeugte synthetische Merge-Commit.
+#
+# Auf Push bleibt Gate 3 fuer echte direkte Commits hart. GitHub-erzeugte
+# Merge-/PR-Commits werden nicht erneut am synthetischen Titel abgelehnt,
+# weil der eingereichte PR-Head bereits im pull_request-Lauf geprueft wurde.
+#
+# Bei pull_request gilt dieselbe Ausnahme fuer einen Merge-Commit am PR-Kopf
+# (seit 28.09.2026): GitHubs Knopf "Update branch" erzeugt "Merge branch 'main'
+# into <zweig>" als neuen Kopf-Commit. Der ist kein Commit des Autors und wird
+# beim Merge nie zum Titel auf dem Zielzweig; ihn zu bewerten machte jeden
+# aktualisierten PR rot (belegt: Klangschalen/unified-agent-system PR 18,
+# Lauf 36428109273, 28.09.2026). Was zum Commit-Titel werden kann - der letzte
+# echte Branch-Commit oder der PR-Titel - prueft Gate 3 bzw. Gate 3b weiterhin.
+#
+# Gate 3b schliesst die Luecke, die dieser Verzicht sonst offen liesse: bei
+# einem Squash-Merge (GitHub-Default) wird NICHT der letzte Branch-Commit zum
+# Titel auf dem Zielzweig, sondern der PR-TITEL. Ein PR, dessen einzelne
+# Commits alle konform sind, aber dessen Titel es nicht ist, waere frueher
+# gruen gemergt und haette trotzdem einen nicht-konformen Commit auf dem
+# Zielzweig hinterlassen (siehe Klangschalen/website-audit PR #19,
+# 2026-09-17: Commits "feat(audit): ...", "fix(audit): ..." konform, aber der
+# PR-Titel "Produktdaten-Luecke messen: ..." nicht - genau dieser Titel wurde
+# zum Commit auf dem Standardzweig). Gate 3b prueft deshalb zusaetzlich den
+# PR-Titel selbst, bevor gemergt werden kann.
+#
+# Beispiel:
 #
 #   permissions:
 #     contents: read
@@ -10,13 +36,11 @@ name: Doku-Lint (zentral, wiederverwendbar)
 #       uses: Klangschalen/.github/.github/workflows/doku-lint.yml@<SHA>
 #       with:
 #         pflicht_dateien: "README.md,LICENSE,CHANGELOG.md,..."
+#         warn_only: true
+#         commit_format_warn_only: false
 #       permissions:
 #         contents: read
 #       secrets: inherit
-#
-# WICHTIG: Caller MUSS `secrets: inherit` setzen, sonst kommt der GITHUB_TOKEN
-# nicht beim cross-org Reusable-Workflow an (actions/checkout schlaegt sonst
-# mit "could not read Username" fehl).
 
 on:
   workflow_call:
@@ -26,9 +50,17 @@ on:
         type: string
         default: "README.md,LICENSE,CHANGELOG.md,STATUS.md,CONTRIBUTING.md,SECURITY.md,.editorconfig,.gitignore"
       warn_only:
-        description: "Wenn true, nur Warnung statt Fehler"
+        description: "Gate 1+2: wenn true, nur Warnung statt Fehler"
         type: boolean
         default: true
+      commit_format_warn_only:
+        description: "Gate 3+3b: wenn true, nur Warnung statt Fehler"
+        type: boolean
+        default: false
+      allowed_commit_types:
+        description: "Komma-getrennte erlaubte Conventional-Commit-Typen"
+        type: string
+        default: "feat,fix,docs,style,refactor,test,chore,perf,build,ci,revert,policy"
 
 permissions:
   contents: read
@@ -36,84 +68,217 @@ permissions:
 jobs:
   pruefen:
     name: Doku-Lint Pruefung
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
+    env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      BASE_COMMIT: ${{ github.event.pull_request.base.sha || '' }}
+      ALLOWED_COMMIT_TYPES: ${{ inputs.allowed_commit_types }}
+      CONVENTIONAL_SUBJECT_PATTERN: '^([a-z][a-z0-9-]*)(\([a-z0-9-]+\))?!?:'
+      CHANGELOG_PATH_PATTERN: '^(CHANGELOG\.md|CHANGELOG\.d/.+\.md)$'
     steps:
-      - name: Checkout
-        # SHA-Pin auf v6.0.2 (Node 24 ready, vermeidet Deprecation-Warning 2026-06-02)
+      - name: Exakten Quell-Commit laden
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.SOURCE_COMMIT }}
           fetch-depth: 0
+          persist-credentials: false
           token: ${{ github.token }}
+
+      - name: Geprueften Commit ausgeben
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Ereignis: ${{ github.event_name }}"
+          echo "Quell-Commit: $SOURCE_COMMIT"
+          if [ -n "$BASE_COMMIT" ]; then
+            echo "Basis-Commit: $BASE_COMMIT"
+          fi
 
       - name: Gate 1 - Pflicht-Dateien vorhanden
         shell: bash
+        env:
+          WARN_ONLY: ${{ inputs.warn_only }}
         run: |
-          set -e
+          set -euo pipefail
           IFS=',' read -ra files <<< "${{ inputs.pflicht_dateien }}"
           missing=()
           present=()
-          for f in "${files[@]}"; do
-            if [ -f "$f" ]; then
-              present+=("$f")
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              present+=("$file")
             else
-              missing+=("$f")
+              missing+=("$file")
             fi
           done
+
           echo "Vorhanden (${#present[@]}): ${present[*]}"
           echo "Fehlen   (${#missing[@]}): ${missing[*]:-keine}"
-          if [ ${#missing[@]} -gt 0 ]; then
-            if [ "${{ inputs.warn_only }}" = "true" ]; then
-              echo "::warning::Fehlende Pflicht-Dateien: ${missing[*]}"
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            message="Fehlende Pflicht-Dateien: ${missing[*]}"
+            if [ "$WARN_ONLY" = "true" ]; then
+              echo "::warning::$message"
             else
-              echo "::error::Fehlende Pflicht-Dateien: ${missing[*]}"
+              echo "::error::$message"
               exit 1
             fi
           fi
 
-      - name: Gate 2 - CHANGELOG-Touch bei Code-Aenderung (nur Pull Requests)
+      - name: Gate 2 - Changelog-Beleg bei Code-Aenderung
         if: github.event_name == 'pull_request'
         shell: bash
+        env:
+          WARN_ONLY: ${{ inputs.warn_only }}
         run: |
-          set -e
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          git fetch origin "$base" --depth=50 || true
-          changed=$(git diff --name-only "$base"..."$head" || git diff --name-only HEAD~1)
-          echo "Geaenderte Dateien:"
-          echo "$changed"
-          code_changed=$(echo "$changed" | grep -E '\.(php|py|js|ts|sh|yml|yaml)$' || true)
-          if [ -n "$code_changed" ]; then
-            if echo "$changed" | grep -qE '^CHANGELOG\.md$'; then
-              echo "OK - CHANGELOG.md ist mit beruehrt"
-            else
-              msg="Code-Aenderung ohne CHANGELOG-Touch: $code_changed"
-              if [ "${{ inputs.warn_only }}" = "true" ]; then
-                echo "::warning::$msg"
-              else
-                echo "::error::$msg"
-                exit 1
-              fi
-            fi
-          else
-            echo "Keine Code-Aenderung im PR, CHANGELOG-Touch nicht noetig."
-          fi
+          set -euo pipefail
 
-      - name: Gate 3 - Conventional-Commit-Format des letzten Commits
-        shell: bash
-        run: |
-          set -e
-          msg=$(git log -1 --pretty=%s)
-          echo "Letzter Commit-Titel: $msg"
-          if echo "$msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|build|ci|revert)(\([a-z0-9-]+\))?!?:'; then
-            echo "OK - Conventional Commit"
-          else
-            warn="Commit-Titel nicht Conventional: '$msg' (erwartet: feat:/fix:/docs:/...)"
-            if [ "${{ inputs.warn_only }}" = "true" ]; then
-              echo "::warning::$warn"
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE_COMMIT"
+          fi
+          git cat-file -e "$BASE_COMMIT^{commit}"
+
+          changed="$(git diff --name-only "$BASE_COMMIT"..."$SOURCE_COMMIT")"
+          echo "Geaenderte Dateien:"
+          printf '%s\n' "$changed"
+
+          code_changed="$(printf '%s\n' "$changed" | grep -E '\.(php|py|js|ts|sh|yml|yaml)$' || true)"
+          changelog_changed="$(printf '%s\n' "$changed" | grep -E "$CHANGELOG_PATH_PATTERN" || true)"
+
+          if [ -n "$code_changed" ] && [ -z "$changelog_changed" ]; then
+            message="Code-Aenderung ohne CHANGELOG.md oder CHANGELOG.d/*.md: $code_changed"
+            if [ "$WARN_ONLY" = "true" ]; then
+              echo "::warning::$message"
             else
-              echo "::error::$warn"
+              echo "::error::$message"
               exit 1
             fi
+          elif [ -n "$code_changed" ]; then
+            echo "OK - Changelog-Beleg vorhanden:"
+            printf '%s\n' "$changelog_changed"
+          else
+            echo "Keine Code-Aenderung im Pull Request."
+          fi
+
+      - name: Gate 3 - Conventional Head-Commit
+        shell: bash
+        env:
+          COMMIT_FORMAT_WARN_ONLY: ${{ inputs.commit_format_warn_only }}
+        run: |
+          set -euo pipefail
+
+          message="$(git log -1 --pretty=%s "$SOURCE_COMMIT")"
+          echo "Gepruefter Commit-Titel: $message"
+          echo "Erlaubte Typen: $ALLOWED_COMMIT_TYPES"
+
+          parent_line="$(git rev-list --parents -n1 "$SOURCE_COMMIT")"
+          parent_count=$(( $(awk '{print NF}' <<< "$parent_line") - 1 ))
+
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "$parent_count" -gt 1 ]; then
+            echo "OK - Merge-Commit am PR-Kopf (z.B. GitHubs 'Merge branch main into ...' nach 'Update branch'): der synthetische Merge-Titel wird nicht bewertet, der PR-Titel wird in Gate 3b blockierend geprueft."
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            committer_email="$(git log -1 --pretty=%ce "$SOURCE_COMMIT")"
+
+            if [ "$parent_count" -gt 1 ]; then
+              echo "OK - Git-Merge-Commit auf Push: PR-Head wurde im pull_request-Gate geprueft; synthetischer Merge-Titel wird nicht erneut blockierend bewertet."
+              exit 0
+            fi
+
+            if [[ "$committer_email" == *"noreply@github.com" ]] && [[ "$message" =~ \(#[0-9]+\)$ ]]; then
+              echo "OK - GitHub-erzeugter PR-Commit auf Push: PR-Head bzw. PR-Titel wurde bereits im pull_request-Gate (Gate 3 + Gate 3b) blockierend geprueft."
+              exit 0
+            fi
+          fi
+
+          format_ok=false
+          commit_type=""
+          if [[ "$message" =~ $CONVENTIONAL_SUBJECT_PATTERN ]]; then
+            format_ok=true
+            commit_type="${BASH_REMATCH[1]}"
+          fi
+
+          type_ok=false
+          if [ "$format_ok" = "true" ]; then
+            IFS=',' read -ra allowed_types <<< "$ALLOWED_COMMIT_TYPES"
+            for allowed_type in "${allowed_types[@]}"; do
+              allowed_type="${allowed_type//[[:space:]]/}"
+              if [ "$commit_type" = "$allowed_type" ]; then
+                type_ok=true
+                break
+              fi
+            done
+          fi
+
+          if [ "$format_ok" = "true" ] && [ "$type_ok" = "true" ]; then
+            echo "OK - Conventional Head-Commit mit Typ '$commit_type'"
+            exit 0
+          fi
+
+          if [ "$format_ok" != "true" ]; then
+            problem="Head-Commit $SOURCE_COMMIT hat kein Conventional-Commit-Format: '$message'"
+          else
+            problem="Commit-Typ '$commit_type' ist nicht erlaubt: '$message'"
+          fi
+
+          hint="Erlaubt: $ALLOWED_COMMIT_TYPES. Richtlinien nutzen 'policy: ...' oder 'docs(policy): ...'."
+          if [ "$COMMIT_FORMAT_WARN_ONLY" = "true" ]; then
+            echo "::warning::$problem. $hint"
+          else
+            echo "::error::$problem. $hint"
+            exit 1
+          fi
+
+      - name: Gate 3b - Conventional PR-Titel (wird bei Squash-Merge zum Commit-Titel)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          COMMIT_FORMAT_WARN_ONLY: ${{ inputs.commit_format_warn_only }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          echo "Gepruefter PR-Titel: $PR_TITLE"
+          echo "Erlaubte Typen: $ALLOWED_COMMIT_TYPES"
+          echo "Grund: GitHub uebernimmt bei einem Squash-Merge den PR-Titel unveraendert als Commit-Titel auf dem Zielzweig. Gate 3 prueft nur den letzten Branch-Commit - der kann konform sein, waehrend der PR-Titel es nicht ist. Ohne diese Pruefung wuerde genau dieser nicht-konforme Titel ungeprueft auf den Zielzweig gelangen."
+
+          format_ok=false
+          commit_type=""
+          if [[ "$PR_TITLE" =~ $CONVENTIONAL_SUBJECT_PATTERN ]]; then
+            format_ok=true
+            commit_type="${BASH_REMATCH[1]}"
+          fi
+
+          type_ok=false
+          if [ "$format_ok" = "true" ]; then
+            IFS=',' read -ra allowed_types <<< "$ALLOWED_COMMIT_TYPES"
+            for allowed_type in "${allowed_types[@]}"; do
+              allowed_type="${allowed_type//[[:space:]]/}"
+              if [ "$commit_type" = "$allowed_type" ]; then
+                type_ok=true
+                break
+              fi
+            done
+          fi
+
+          if [ "$format_ok" = "true" ] && [ "$type_ok" = "true" ]; then
+            echo "OK - Conventional PR-Titel mit Typ '$commit_type'"
+            exit 0
+          fi
+
+          if [ "$format_ok" != "true" ]; then
+            problem="PR-Titel hat kein Conventional-Commit-Format: '$PR_TITLE'"
+          else
+            problem="PR-Titel-Typ '$commit_type' ist nicht erlaubt: '$PR_TITLE'"
+          fi
+
+          hint="Erlaubt: $ALLOWED_COMMIT_TYPES. Der PR-Titel wird bei Squash-Merge zum Commit-Titel - deshalb gilt hier dieselbe Regel wie fuer Gate 3."
+          if [ "$COMMIT_FORMAT_WARN_ONLY" = "true" ]; then
+            echo "::warning::$problem. $hint"
+          else
+            echo "::error::$problem. $hint"
+            exit 1
           fi

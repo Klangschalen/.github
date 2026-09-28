@@ -1,0 +1,42 @@
+name: Michael-Spiegel-Vertrag
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/michael-spiegel.yml"
+      - ".github/workflows/michael-spiegel-contract.yml"
+      - ".github/workflows/README.md"
+      - "scripts/test_michael_spiegel_contract.py"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/michael-spiegel.yml"
+      - ".github/workflows/michael-spiegel-contract.yml"
+      - ".github/workflows/README.md"
+      - "scripts/test_michael_spiegel_contract.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: michael-spiegel-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python einrichten
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: PyYAML
+        run: python3 -m pip install --quiet "pyyaml==6.0.2"
+
+      - name: Michael-Spiegel-Vertrag pruefen
+        run: python3 scripts/test_michael_spiegel_contract.py

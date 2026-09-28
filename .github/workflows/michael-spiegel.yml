@@ -1,0 +1,208 @@
+# Michael-Spiegel: traegt Uebergabe-Dateien aus einem internen Repository automatisch
+# in das Repository, das Michael lesen kann (Klangschalen/michael-arbeitsuebergabe).
+#
+# Warum es diesen Ablauf gibt (Frank, 05.09.2026): "Mir ist wichtig, dass, wenn wir an den
+# Dingen, die wir Michael uebergeben, die in meinen Repositories liegen, wo Michael keinen
+# Zugriff hat, er automatisiert die Kopie an Michael mittraegt." Belegter Fall vom selben Tag:
+# eine Mail an Michael verlinkte zwei Dateien in schnittstellen-doku - einem Repository, in dem
+# er kein Mitarbeiter ist. Er haette zwei tote Links bekommen.
+#
+# Grundsatz: Der Merge auf den Default-Zweig des Quell-Repositorys IST die Freigabe. Danach
+# entscheidet niemand ein zweites Mal. Der Ablauf kopiert NUR den Ordner `uebergabe-michael/`
+# (oder den per Input genannten Ordner), niemals das uebrige Repository, und loescht im Ziel
+# nie etwas. Interne Akten, Schluessel und Personendaten werden fail-closed abgewiesen: ein
+# einziger verdaechtiger Treffer, und es wird gar nichts kopiert.
+#
+# Sicherheit: Das Token liegt als Secret im QUELL-Repository (nur Frank hat dort Zugriff),
+# nie im Ziel-Repository - dort hat Michael Schreibrecht, und ein Workflow dort koennte ein
+# Secret auslesen. Deshalb ist der Spiegel push-basiert (Quelle schreibt ins Ziel) und nie
+# pull-basiert (Ziel liest aus den Quellen). Ausloeser im Caller: nur `push` auf den
+# Default-Zweig mit Pfadfilter `uebergabe-michael/**` und `workflow_dispatch` - nie
+# `pull_request`.
+#
+# Einbindung im Quell-Repository: siehe README.md in diesem Ordner, Abschnitt michael-spiegel.yml.
+
+name: Michael-Spiegel
+
+on:
+  workflow_call:
+    inputs:
+      quell_ordner:
+        description: "Ordner im Quell-Repository, dessen Inhalt gespiegelt wird"
+        type: string
+        required: false
+        default: "uebergabe-michael"
+      ziel_repository:
+        description: "Repository, das Michael lesen kann"
+        type: string
+        required: false
+        default: "Klangschalen/michael-arbeitsuebergabe"
+      ziel_ordner:
+        description: "Ordner im Ziel-Repository, unter dem je Quell-Repository ein Unterordner entsteht"
+        type: string
+        required: false
+        default: "eingang"
+      ziel_zweig:
+        description: "Zweig im Ziel-Repository"
+        type: string
+        required: false
+        default: "main"
+      trockenlauf:
+        description: "true: alles pruefen und zeigen, aber nichts pushen"
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      spiegel_token:
+        description: "Fine-grained PAT mit Contents: Read and write NUR auf das Ziel-Repository"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  spiegel:
+    name: michael-spiegel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Quelle auf dem exakten Commit auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: quelle
+          persist-credentials: false
+
+      - name: Ziel auschecken (Token nur hier)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.ziel_repository }}
+          ref: ${{ inputs.ziel_zweig }}
+          path: ziel
+          token: ${{ secrets.spiegel_token }}
+          persist-credentials: true
+
+      - name: Uebergabe-Dateien pruefen und kopieren
+        id: kopie
+        shell: bash
+        env:
+          QUELL_REPO: ${{ github.repository }}
+          QUELL_SHA: ${{ github.sha }}
+          QUELL_ORDNER: ${{ inputs.quell_ordner }}
+          ZIEL_ORDNER: ${{ inputs.ziel_ordner }}
+        run: |
+          set -euo pipefail
+          # --- SPIEGEL-SKRIPT-ANFANG --- (der Vertragstest scripts/test_michael_spiegel_contract.py
+          # schneidet diesen Block aus und fuehrt ihn gegen Testordner in beide Richtungen aus)
+          QUELLE="${QUELLE:-quelle/${QUELL_ORDNER}}"
+          REPO_NAME="${QUELL_REPO##*/}"
+          ZIEL="${ZIEL:-ziel/${ZIEL_ORDNER}/${REPO_NAME}}"
+          ZIEL_WURZEL="${ZIEL_WURZEL:-ziel/${ZIEL_ORDNER}}"
+          MAX_BYTES="${MAX_BYTES:-10485760}"
+
+          if [ ! -d "$QUELLE" ]; then
+            echo "Kein Ordner '$QUELLE' im Quell-Repository - nichts zu spiegeln."
+            echo "dateien=0" >> "${GITHUB_OUTPUT:-/dev/null}"
+            exit 0
+          fi
+
+          # Fail-closed: erst ALLES pruefen, dann kopieren. Ein Treffer = keine einzige Kopie.
+          VERBOTEN_NAME='(^|/)(\.env[^/]*|[^/]*\.(pem|key|p12|pfx|sql|dump|log)|id_rsa[^/]*|id_ed25519[^/]*)$'
+          VERBOTEN_WORT='(arbeitsjournal|evidenzakte|interne.?historie|gespraechsstrategie|adress|kunden|token|secret|passwor|credential)'
+          VERBOTEN_INHALT='(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|xox[baprs]-[A-Za-z0-9-]{10,})'
+          fehler=0
+          anzahl=0
+          # Die README.md direkt im Quell-Ordner ist die interne Anleitung und wird nicht gespiegelt.
+          while IFS= read -r -d '' datei; do
+            rel="${datei#"$QUELLE"/}"
+            [ "$rel" = "README.md" ] && continue
+            anzahl=$((anzahl + 1))
+            rel_klein="$(printf '%s' "$rel" | tr '[:upper:]' '[:lower:]')"
+            if printf '%s' "$rel_klein" | grep -Eq "$VERBOTEN_NAME"; then
+              echo "ABGEWIESEN (Dateityp/Name): $rel"; fehler=1
+            fi
+            if printf '%s' "$rel_klein" | grep -Eq "$VERBOTEN_WORT"; then
+              echo "ABGEWIESEN (interne Akte oder Personendaten im Namen): $rel"; fehler=1
+            fi
+            groesse=$(wc -c < "$datei")
+            if [ "$groesse" -gt "$MAX_BYTES" ]; then
+              echo "ABGEWIESEN (groesser als $MAX_BYTES Byte): $rel"; fehler=1
+            fi
+            if grep -Eq "$VERBOTEN_INHALT" "$datei"; then
+              echo "ABGEWIESEN (schluesselaehnlicher Inhalt): $rel"; fehler=1
+            fi
+          done < <(find "$QUELLE" -type f -print0 | sort -z)
+
+          if [ "$fehler" -ne 0 ]; then
+            echo "::error::Mindestens eine Datei abgewiesen - es wurde NICHTS gespiegelt (fail-closed)."
+            exit 1
+          fi
+          if [ "$anzahl" -eq 0 ]; then
+            echo "Ordner '$QUELLE' ist leer - nichts zu spiegeln."
+            echo "dateien=0" >> "${GITHUB_OUTPUT:-/dev/null}"
+            exit 0
+          fi
+
+          mkdir -p "$ZIEL"
+          if [ ! -f "$ZIEL_WURZEL/README.md" ]; then
+            cat > "$ZIEL_WURZEL/README.md" <<'EOF_README'
+          # Eingang: Übergaben aus internen Sound-Spirit-Repositories
+
+          Hier landen automatisch die Dateien, die das Sound-Spirit-Team für Michael freigegeben
+          hat. Je Quell-Repository gibt es einen Unterordner; die Datei `QUELLE.txt` darin nennt
+          Herkunft, Commit und Zeitpunkt der letzten Übertragung.
+
+          Was hier NICHT liegt: Code, der ein zuständiges Repository besitzt, interne Notizen,
+          Zugangsdaten. Änderungen an diesen Dateien bitte nicht hier, sondern als Kommentar im
+          zugehörigen Issue oder per Mail an team@sound-spirit.de.
+
+          Übertragen wird der Ordner `uebergabe-michael/` des jeweiligen Quell-Repositorys,
+          sobald er auf dessen Hauptzweig gemerged ist. Gelöscht wird hier nie automatisch.
+          EOF_README
+          fi
+          while IFS= read -r -d '' datei; do
+            rel="${datei#"$QUELLE"/}"
+            [ "$rel" = "README.md" ] && continue
+            mkdir -p "$ZIEL/$(dirname "$rel")"
+            cp -f "$datei" "$ZIEL/$rel"
+            echo "kopiert: $rel"
+          done < <(find "$QUELLE" -type f -print0 | sort -z)
+          {
+            echo "Gespiegelt aus: https://github.com/${QUELL_REPO}"
+            echo "Ordner: ${QUELL_ORDNER}"
+            echo "Commit: ${QUELL_SHA}"
+            echo "Zeitpunkt (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "Dateien: ${anzahl}"
+          } > "$ZIEL/QUELLE.txt"
+          echo "dateien=${anzahl}" >> "${GITHUB_OUTPUT:-/dev/null}"
+          echo "Gespiegelt: ${anzahl} Datei(en) nach ${ZIEL}"
+          # --- SPIEGEL-SKRIPT-ENDE ---
+
+      - name: Im Ziel committen und pushen
+        if: steps.kopie.outputs.dateien != '0' && steps.kopie.outputs.dateien != ''
+        shell: bash
+        env:
+          QUELL_REPO: ${{ github.repository }}
+          QUELL_SHA: ${{ github.sha }}
+          QUELL_ORDNER: ${{ inputs.quell_ordner }}
+          ZIEL_ZWEIG: ${{ inputs.ziel_zweig }}
+          TROCKENLAUF: ${{ inputs.trockenlauf }}
+          ANZAHL: ${{ steps.kopie.outputs.dateien }}
+        run: |
+          set -euo pipefail
+          cd ziel
+          git config user.name "sound-spirit-spiegel"
+          git config user.email "team@sound-spirit.de"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Keine Aenderung gegenueber dem Ziel - kein Commit."
+            exit 0
+          fi
+          git commit -q -m "chore(spiegel): ${QUELL_REPO} ${QUELL_SHA:0:7} - ${ANZAHL} Datei(en) aus ${QUELL_ORDNER}"
+          git --no-pager show --stat --oneline HEAD | head -40
+          if [ "${TROCKENLAUF}" = "true" ]; then
+            echo "TROCKENLAUF: Commit erzeugt, aber nicht gepusht."
+            exit 0
+          fi
+          git push origin "HEAD:${ZIEL_ZWEIG}"
+          echo "Gepusht nach ${ZIEL_ZWEIG}."

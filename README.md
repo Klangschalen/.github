@@ -1,40 +1,45 @@
 # Klangschalen Org-Verwaltung
 
-Dieses Repo (`.github` in der Organisation) enthaelt organisations-weite
-Standards, die andere Repos einbinden:
-
-- `.github/workflows/doku-lint.yml` - wiederverwendbare Doku-Lint-Action
-- `.github/workflows/org-doku-audit.yml` - naechtlicher org-weiter Doku-Audit
+Dieses Repository enthält organisationsweite Standards, die andere
+Klangschalen-Repositories einbinden.
 
 ## Was hier liegt
 
 | Datei | Zweck |
 |---|---|
-| `.github/workflows/doku-lint.yml` | Zentrale Doku-Linter-Action, alle Repos binden sie ein (per PR) |
-| `.github/workflows/org-doku-audit.yml` | Naechtlicher Audit ueber ALLE Repos, postet Sammel-Issue |
-| `.github/workflows/README.md` | Erklaerung wie Repos die Action einbinden |
-| `scripts/org_doku_audit.py` | Audit-Logik (Pflichtdateien pro Repo pruefen, Bericht bauen) |
-| `scripts/test_org_doku_audit.py` | Tests der Bericht-Logik (ohne Netz) |
+| `.github/workflows/doku-lint.yml` | Wiederverwendbarer Doku-Lint mit Prüfung des exakten PR-Heads |
+| `.github/workflows/doku-lint-contract.yml` | Fail-closed Rückfalltest für Quellbindung, Commit-Typen und Dokumentation |
+| `.github/workflows/claim-lint.yml` | Prüft unbelegte Vollständigkeitsbehauptungen |
+| `.github/workflows/org-doku-audit.yml` | Nächtlicher Doku-Audit über alle sichtbaren Repositories |
+| `.github/workflows/org-action-runtime-audit.yml` | Prüft Action-Runtime und vollständige SHA-Pins |
+| `.github/workflows/README.md` | Erklärt Einbindung, Modi und erlaubte Commit-Typen |
+| `scripts/org_doku_audit.py` | Baut den organisationsweiten Doku-Bericht |
+| `scripts/test_org_doku_audit.py` | Testet die Bericht-Logik ohne Netz |
+| `scripts/test_doku_lint_contract.py` | Sichert den Doku-Lint-Vertrag gegen Rückfälle |
 
 ## Zwei Ebenen der Doku-Kontrolle
 
-1. **Pro PR (sofort):** `doku-lint.yml` als reusable Workflow im jeweiligen Repo
-   einbinden. Prueft beim Pull Request: Pflicht-Dateien vorhanden, CHANGELOG bei
-   Code-Aenderung mit beruehrt, Conventional-Commit-Format.
-2. **Naechtlich (Gesamtbild):** `org-doku-audit.yml` laeuft taeglich 03:00 UTC
-   (und manuell via *Actions -> Run workflow*) und prueft in **allen** nicht-
-   archivierten Repos, ob die Pflichtdateien existieren. Ergebnis: **ein**
-   Sammel-Issue "Org Doku-Audit (automatisch)" mit Ampel-Tabelle, das bei jedem
-   Lauf aktualisiert wird.
+1. **Pro Pull Request:** `doku-lint.yml` prüft Pflicht-Dateien, den
+   `CHANGELOG.md`-Touch und das Commit-Format. Bei Pull Requests bindet er sich
+   an den exakten Quell-Commit statt an GitHubs synthetischen Merge-Commit.
+2. **Nächtlich:** `org-doku-audit.yml` prüft alle sichtbaren, nicht
+   archivierten Repositories und pflegt ein gemeinsames Sammel-Issue.
 
-**Voraussetzung fuer den vollen naechtlichen Lauf:** ein Secret `ORG_AUDIT_TOKEN`
-(Fine-grained PAT mit *Contents: read* org-weit + *Issues: write* auf `.github`).
-Ohne dieses Secret nutzt der Workflow `GITHUB_TOKEN` und sieht nur dieses Repo.
+Der zentrale Commit-Standard erlaubt unter anderem `policy:`. Dadurch können
+Richtlinien klar benannt werden, ohne an einer versteckten Typenliste zu
+scheitern. Der eigene Vertragstest hält Workflow und Dokumentation synchron.
 
-## Roll-out neuer Repos
+**Voraussetzung für den vollständigen nächtlichen Lauf:** Das Secret
+`ORG_AUDIT_TOKEN` braucht organisationsweit `Contents: read` sowie
+`Issues: write` auf diesem Repository. Ohne das Secret sieht der Workflow nur
+den Umfang des normalen `GITHUB_TOKEN`.
 
-Nutze `Klangschalen/repo-template` als Vorlage (Use this template).
-Die Workflow-Definition ist da bereits eingebunden.
+## Rollout neuer Repositories
+
+`Klangschalen/repo-template` enthält den Caller für den zentralen Doku-Lint.
+Produktive Caller sollten eine geprüfte 40-stellige Commit-SHA verwenden.
+Die aktuelle Einbindung und alle Schalter stehen in
+`.github/workflows/README.md`.
 
 ## Hilfe
 
