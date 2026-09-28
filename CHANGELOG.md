@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-28 - HWG-Deckungslauf checkt agenten-systeme aus statt ein Repo, das es nicht gibt
+
+`hwg-cross-repo-coverage.yml` war seit dem 17.09. jeden Tag rot, auch nach dem Eintragen von
+ORG_AUDIT_TOKEN: Er checkte "Klangschalen/settext-studio" aus (GitHub: "Not Found", Lauf
+36461139499) und den fuenften GitHub-Verbraucher agenten-systeme gar nicht. Der Checker
+meldete deshalb "HWG-Kernspiegel 4/6" mit Rueckgabewert 2. settext-studio ist laut
+`quality-system/tests/check-textdaten-drift.py` (HWG_KONSUMENTEN, `github_actions: False`)
+ein lokales Arbeitsverzeichnis, kein Repo. Jetzt: agenten-systeme wird ausgecheckt, der
+settext-studio-Checkout ist weg. Erwartung: "PASS (GitHub-Umfang) - 5/5 GitHub-Verbraucher".
+Gefunden ueber den Waechter ueber den Waechtern (zentrale Issue 266, Buendel 1, nach
+Korrektur).
 ## 2026-09-28 - Runtime-Audit schreibt sein Sammel-Issue wieder mit dem Lauf-Token
 
 Seit ORG_AUDIT_TOKEN gesetzt ist (28.09.2026, bewusst nur lesend), scheiterte der
