@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-28 - Archify-Löschschutz: Schutzlogik zuerst, Workflow danach
+
+Pull Request 20 (02.09.2026) bringt den organisationsweiten Archify-Löschschutz:
+Richtlinie `config/archify-presence-policy.json`, Prüfung
+`scripts/archify_presence_guard.py`, Negativtests
+`scripts/test_archify_presence_guard.py` und den Workflow
+`archify-presence-guard.yml`. Der Workflow holt die Schutzlogik bewusst immer
+von `main` dieses Repositories - so kann kein Pull Request Archify und den
+Wächter gemeinsam entfernen. Genau deshalb war der PR rot (Lauf 33681861824,
+02.09.2026): sein eigener Workflow suchte `test_archify_presence_guard.py` auf
+`main`, wo die Datei noch nicht lag ("No such file or directory").
+
+Den Bezug auf `main` zu lockern hiesse, den Schutz zu schwächen. Stattdessen
+kommen Richtlinie, Prüfung und Tests mit diesem Eintrag zuerst auf `main`
+(hier, ohne Workflow); der Workflow und die README-Erklärung folgen in Pull
+Request 20, dessen Prüfung damit die Schutzlogik auf `main` findet. Gemessen
+vor dem Merge: `python3 scripts/test_archify_presence_guard.py` meldet 5 von 5
+bestanden; die Prüfung gegen dieses Repository mit der Richtlinie liefert GRUEN,
+sobald der Workflow (PR 20) dazukommt.
+
 ## 2026-09-28 - Gate 3 macht aktualisierte Pull Requests nicht mehr rot
 
 Wer im Pull Request "Update branch" drueckt, bekommt von GitHub den Kopf-Commit
