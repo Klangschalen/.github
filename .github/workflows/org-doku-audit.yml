@@ -50,7 +50,12 @@ jobs:
 
       - name: Sammelbericht als Issue posten/aktualisieren
         env:
-          GH_TOKEN: ${{ secrets.ORG_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          # Das Issue liegt in DIESEM Repo; dafuer reicht das Lauf-Token mit
+          # issues: write. ORG_AUDIT_TOKEN ist seit 28.09.2026 gesetzt und bewusst
+          # nur lesend - mit ihm scheiterte dieser Schritt im ersten Lauf danach
+          # (Lauf 36549850098, 29.09.). Lesen org-weit: ORG_AUDIT_TOKEN, schreiben
+          # hier: github.token. Gleiche Reparatur wie org-action-runtime-audit.yml.
+          GH_TOKEN: ${{ github.token }}
         run: |
           TITLE="Org Doku-Audit (automatisch)"
           EXISTING=$(gh issue list --repo "${{ github.repository }}" \

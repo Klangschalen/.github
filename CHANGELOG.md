@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-29 - Doku-Audit schreibt sein Sammel-Issue wieder mit dem Lauf-Token
+
+Dieselbe Falle wie am Vortag beim Runtime-Audit, im Schwester-Ablauf uebersehen:
+`org-doku-audit.yml` scheiterte im ersten Zeitplan-Lauf nach dem Eintragen von
+ORG_AUDIT_TOKEN im Schritt "Sammelbericht als Issue posten/aktualisieren" (Lauf
+36549850098, 29.09.; die Laeufe 26. bis 28.09. waren gruen). Der Schritt nahm
+`ORG_AUDIT_TOKEN || GITHUB_TOKEN` und damit jetzt das nur lesende Token. Jetzt
+schreibt er mit `github.token`. Gefunden ueber den Waechter ueber den Waechtern
+(zentrale Issue 266, Lauf 36559975752). Org-weite Suche nach `ORG_AUDIT_TOKEN ||`
+in allen Ablaeufen: kein weiterer Schreibschritt mit diesem Muster.
+
 ## 2026-09-28 - HWG-Deckungslauf checkt agenten-systeme aus statt ein Repo, das es nicht gibt
 
 `hwg-cross-repo-coverage.yml` war seit dem 17.09. jeden Tag rot, auch nach dem Eintragen von
