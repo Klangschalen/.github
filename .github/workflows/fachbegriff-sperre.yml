@@ -1,0 +1,97 @@
+name: Fachbegriff-Sperre (Ausmessen von Planetenschalen)
+
+# Wiederverwendbarer Workflow. Prueft die Texte eines aufrufenden Repos gegen die
+# entschiedenen Messfakten in Klangschalen/wissensgraph (wissen/messverfahren.json):
+# gesperrte Woerter wie das alte Wort fuer den tiefsten Ton, "gestimmt", "exakte Frequenz".
+# Owner-Entscheidung Frank 29.09./03.10.2026; Beirat 03.10.2026: zuerst nur melden.
+#
+# Einbindung im aufrufenden Repo (.github/workflows/fachbegriff-sperre.yml):
+#   jobs:
+#     sperre:
+#       uses: Klangschalen/.github/.github/workflows/fachbegriff-sperre.yml@main
+#       secrets: inherit
+#       with:
+#         warn_only: true        # false = Treffer machen den Lauf rot
+#         muster: "**/*.md,**/*.html"
+#
+# Quer-Checkout: wissensgraph ist privat. Es wird das erste vorhandene Geheimnis genommen:
+# ORG_AUDIT_TOKEN (organisationsweit, Contents: read), sonst QUALITY_SYSTEM_READ_TOKEN,
+# sonst das eigene Token (das darf wissensgraph nicht lesen). Ohne Zugriff meldet der
+# Schritt NICHT PRUEFBAR - er sagt es, statt gruen zu luegen (werkzeug-meldung-ist-symptom).
+
+on:
+  workflow_call:
+    inputs:
+      warn_only:
+        description: "true = Treffer nur melden (Schritt bleibt gruen); false = Treffer machen den Lauf rot"
+        type: boolean
+        default: true
+      muster:
+        description: "Komma-getrennte Globs der zu pruefenden Dateien"
+        type: string
+        default: "**/*.md,**/*.html"
+      ausnahme:
+        description: "Regex auf den relativen Pfad; Treffer werden uebersprungen (leer = Standard des Werkzeugs: learnings/, archiv/, CHANGELOG, OFFENE-AUFGABEN.md)"
+        type: string
+        default: ""
+      wissensgraph_ref:
+        description: "Zweig oder Commit von Klangschalen/wissensgraph mit Werkzeug und Quelle"
+        type: string
+        default: "main"
+
+permissions:
+  contents: read
+
+jobs:
+  fachbegriff-sperre:
+    name: Gesperrte Fachbegriffe melden
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Aufrufendes Repo auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+
+      - name: Quelle und Werkzeug auschecken (wissensgraph)
+        id: quelle
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        continue-on-error: true
+        with:
+          repository: Klangschalen/wissensgraph
+          ref: ${{ inputs.wissensgraph_ref }}
+          path: wissensgraph
+          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.QUALITY_SYSTEM_READ_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Python bereitstellen
+        uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55
+        with:
+          python-version: "3.12"
+
+      - name: Fachbegriffe pruefen
+        env:
+          WARN_ONLY: ${{ inputs.warn_only }}
+          MUSTER: ${{ inputs.muster }}
+          AUSNAHME: ${{ inputs.ausnahme }}
+        run: |
+          set +e
+          if [ ! -f wissensgraph/tools/fachbegriff_ci.py ]; then
+            echo "NICHT PRUEFBAR (Rueckgabewert 2): Klangschalen/wissensgraph konnte nicht ausgecheckt werden."
+            echo "Ursache fast immer: kein Geheimnis mit Leserecht auf wissensgraph in diesem Repo (ORG_AUDIT_TOKEN oder QUALITY_SYSTEM_READ_TOKEN)."
+            echo "## Fachbegriff-Sperre: NICHT PRUEFBAR" >> "$GITHUB_STEP_SUMMARY"
+            echo "wissensgraph nicht lesbar; Geheimnis ORG_AUDIT_TOKEN oder QUALITY_SYSTEM_READ_TOKEN fehlt in diesem Repo." >> "$GITHUB_STEP_SUMMARY"
+            if [ "$WARN_ONLY" = "true" ]; then echo "::warning::Fachbegriff-Sperre NICHT PRUEFBAR (wissensgraph nicht lesbar)"; exit 0; fi
+            exit 2
+          fi
+          args=(--wurzel repo)
+          IFS=',' read -ra globs <<< "$MUSTER"
+          for g in "${globs[@]}"; do g="$(echo "$g" | xargs)"; [ -n "$g" ] && args+=(--muster "$g"); done
+          [ -n "$AUSNAHME" ] && args+=(--ausnahme "$AUSNAHME")
+          [ "$WARN_ONLY" = "true" ] && args+=(--warn-only)
+          python wissensgraph/tools/fachbegriff_ci.py "${args[@]}"
+          rc=$?
+          echo "Rueckgabewert des Werkzeugs: $rc"
+          if [ "$rc" = "2" ] && [ "$WARN_ONLY" = "true" ]; then echo "::warning::Fachbegriff-Sperre NICHT PRUEFBAR"; exit 0; fi
+          exit $rc
