@@ -9,6 +9,7 @@ Klangschalen-Repositories einbinden.
 |---|---|
 | `.github/workflows/doku-lint.yml` | Wiederverwendbarer Doku-Lint mit Prüfung des exakten PR-Heads |
 | `.github/workflows/doku-lint-contract.yml` | Fail-closed Rückfalltest für Quellbindung, Commit-Typen und Dokumentation |
+| `.github/workflows/fachbegriff-sperre.yml` | Wiederverwendbare Fachbegriff-Sperre: prüft Texte gegen die Messfakten in `Klangschalen/wissensgraph` (Meldemodus als Standard) |
 | `.github/workflows/claim-lint.yml` | Prüft unbelegte Vollständigkeitsbehauptungen |
 | `.github/workflows/org-doku-audit.yml` | Nächtlicher Doku-Audit über alle sichtbaren Repositories |
 | `.github/workflows/org-action-runtime-audit.yml` | Prüft Action-Runtime und vollständige SHA-Pins |

@@ -296,3 +296,26 @@ reiner `workflow_call`, Token nur im Ziel-Checkout, volle SHA-Pins, nichts wird 
 Abweisungsmuster vorhanden; dazu das Kopierskript in beide Richtungen gegen Testordner
 (kopiert Erlaubtes mit Pfad, weist `.env`, Personendaten und Schlüssel fail-closed ab,
 lässt fehlende Ordner durch, löscht im Ziel nie).
+
+
+## Fachbegriff-Sperre (seit 03.10.2026)
+
+`fachbegriff-sperre.yml` prüft die Markdown- und HTML-Dateien eines Repos gegen die
+entschiedenen Messfakten zum Ausmessen von Planetenschalen (Quelle:
+`Klangschalen/wissensgraph`, `wissen/messverfahren.json`; Werkzeug `tools/fachbegriff_ci.py`).
+Standard ist der **Meldemodus** (`warn_only: true`): Treffer erscheinen als Warnung und in der
+Schrittzusammenfassung mit Klartext (was, warum, stattdessen), der Lauf bleibt grün. Erst wenn
+die Altlasten eines Repos abgearbeitet sind, wird `warn_only: false` gesetzt.
+
+Weil `wissensgraph` privat ist, braucht der Quer-Checkout ein Geheimnis mit Leserecht
+(`ORG_AUDIT_TOKEN` oder `QUALITY_SYSTEM_READ_TOKEN`). Fehlt es, meldet der Schritt
+**NICHT PRUEFBAR** statt grün zu lügen. Einbindung:
+
+```yaml
+jobs:
+  sperre:
+    uses: Klangschalen/.github/.github/workflows/fachbegriff-sperre.yml@main
+    secrets: inherit
+    with:
+      warn_only: true
+```
