@@ -14,10 +14,10 @@ name: Fachbegriff-Sperre (Ausmessen von Planetenschalen)
 #         warn_only: true        # false = Treffer machen den Lauf rot
 #         muster: "**/*.md,**/*.html"
 #
-# Quer-Checkout: wissensgraph ist privat. Es wird das erste vorhandene Geheimnis genommen:
-# ORG_AUDIT_TOKEN (organisationsweit, Contents: read), sonst QUALITY_SYSTEM_READ_TOKEN,
-# sonst das eigene Token (das darf wissensgraph nicht lesen). Ohne Zugriff meldet der
-# Schritt NICHT PRUEFBAR - er sagt es, statt gruen zu luegen (werkzeug-meldung-ist-symptom).
+# Quelle: Die Fakten und Muster leben in Klangschalen/wissensgraph (privat). Weil in pl-sets,
+# zentrale und klangschalen-analyse kein Token dafuer existiert (gemessen 04.10.2026: dort nur
+# "NICHT PRUEFBAR"), liest der Workflow den byte-gleichen Spiegel in diesem oeffentlichen Repo
+# (Ordner fachbegriff/). Die CI von wissensgraph haelt den Spiegel per Drift-Pruefung aktuell.
 
 on:
   workflow_call:
@@ -35,7 +35,7 @@ on:
         type: string
         default: ""
       wissensgraph_ref:
-        description: "Zweig oder Commit von Klangschalen/wissensgraph mit Werkzeug und Quelle"
+        description: "Zweig oder Commit von Klangschalen/.github, aus dem der Spiegel (fachbegriff/) gelesen wird"
         type: string
         default: "main"
 
@@ -54,15 +54,12 @@ jobs:
           path: repo
           persist-credentials: false
 
-      - name: Quelle und Werkzeug auschecken (wissensgraph)
-        id: quelle
+      - name: Quelle und Werkzeug auschecken (Spiegel in Klangschalen/.github, oeffentlich)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        continue-on-error: true
         with:
-          repository: Klangschalen/wissensgraph
+          repository: Klangschalen/.github
           ref: ${{ inputs.wissensgraph_ref }}
-          path: wissensgraph
-          token: ${{ secrets.ORG_AUDIT_TOKEN || secrets.QUALITY_SYSTEM_READ_TOKEN || github.token }}
+          path: spiegel
           persist-credentials: false
 
       - name: Python bereitstellen
@@ -77,11 +74,10 @@ jobs:
           AUSNAHME: ${{ inputs.ausnahme }}
         run: |
           set +e
-          if [ ! -f wissensgraph/tools/fachbegriff_ci.py ]; then
-            echo "NICHT PRUEFBAR (Rueckgabewert 2): Klangschalen/wissensgraph konnte nicht ausgecheckt werden."
-            echo "Ursache fast immer: kein Geheimnis mit Leserecht auf wissensgraph in diesem Repo (ORG_AUDIT_TOKEN oder QUALITY_SYSTEM_READ_TOKEN)."
+          if [ ! -f spiegel/fachbegriff/tools/fachbegriff_ci.py ]; then
+            echo "NICHT PRUEFBAR (Rueckgabewert 2): Spiegel in Klangschalen/.github (fachbegriff/) nicht gefunden."
             echo "## Fachbegriff-Sperre: NICHT PRUEFBAR" >> "$GITHUB_STEP_SUMMARY"
-            echo "wissensgraph nicht lesbar; Geheimnis ORG_AUDIT_TOKEN oder QUALITY_SYSTEM_READ_TOKEN fehlt in diesem Repo." >> "$GITHUB_STEP_SUMMARY"
+            echo "Spiegel Klangschalen/.github fachbegriff/ nicht lesbar." >> "$GITHUB_STEP_SUMMARY"
             if [ "$WARN_ONLY" = "true" ]; then echo "::warning::Fachbegriff-Sperre NICHT PRUEFBAR (wissensgraph nicht lesbar)"; exit 0; fi
             exit 2
           fi
@@ -90,7 +86,7 @@ jobs:
           for g in "${globs[@]}"; do g="$(echo "$g" | xargs)"; [ -n "$g" ] && args+=(--muster "$g"); done
           [ -n "$AUSNAHME" ] && args+=(--ausnahme "$AUSNAHME")
           [ "$WARN_ONLY" = "true" ] && args+=(--warn-only)
-          python wissensgraph/tools/fachbegriff_ci.py "${args[@]}"
+          python spiegel/fachbegriff/tools/fachbegriff_ci.py "${args[@]}"
           rc=$?
           echo "Rueckgabewert des Werkzeugs: $rc"
           if [ "$rc" = "2" ] && [ "$WARN_ONLY" = "true" ]; then echo "::warning::Fachbegriff-Sperre NICHT PRUEFBAR"; exit 0; fi

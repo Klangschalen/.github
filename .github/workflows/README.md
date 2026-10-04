@@ -307,9 +307,9 @@ Standard ist der **Meldemodus** (`warn_only: true`): Treffer erscheinen als Warn
 Schrittzusammenfassung mit Klartext (was, warum, stattdessen), der Lauf bleibt grün. Erst wenn
 die Altlasten eines Repos abgearbeitet sind, wird `warn_only: false` gesetzt.
 
-Weil `wissensgraph` privat ist, braucht der Quer-Checkout ein Geheimnis mit Leserecht
-(`ORG_AUDIT_TOKEN` oder `QUALITY_SYSTEM_READ_TOKEN`). Fehlt es, meldet der Schritt
-**NICHT PRUEFBAR** statt grün zu lügen. Einbindung:
+Der Workflow liest Werkzeug und Fakten aus dem öffentlichen Spiegel `fachbegriff/` in diesem
+Repo (kein Geheimnis nötig). Die Quelle bleibt `Klangschalen/wissensgraph`; dessen CI prüft
+den Spiegel auf Drift. Fehlt der Spiegel, meldet der Schritt **NICHT PRUEFBAR** statt grün zu lügen. Einbindung:
 
 ```yaml
 jobs:
