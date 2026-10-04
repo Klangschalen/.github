@@ -1,0 +1,65 @@
+{
+  "zweck": "Einzige Stelle fuer die entschiedenen Fakten zum Ausmessen von Planetenschalen, die Werkzeuge einlesen. Aendern nur mit Owner-Beleg (Datum, Wortlaut, Quelle).",
+  "stand": "2026-10-03",
+  "entschieden": [
+    {
+      "fakt": "Eine Klangschale hat mehrere Toene gleichzeitig, meist drei; es gibt nicht den einen Ton je Schale.",
+      "quelle": "Frank 29.09.2026 ('nicht dem Grundton zugeordnet, sondern den Toenen, die in der Schale drin sind') und 03.10.2026 ('mehrere Toene in einer Klangschale'); Messseite https://www.sound-spirit.de/www/planetenschalen/messung ('In der Regel sind es drei Toene'); zentrale/docs/reviews/evidence/2026-09-29-ausmessen-planetenschalen.md Zeile 5 und 11"
+    },
+    {
+      "fakt": "Massgeblich sind der tiefste Ton und der erste Ton darueber; sie werden den Planetentoenen zugeordnet.",
+      "quelle": "Frank 29.09.2026; Blog planetenschalen-ausgemessene-klangschalen ('der tiefste Ton und der erste hoehere Ton besonders stark'); Evidence-Dokument Zeile 22 und 76"
+    },
+    {
+      "fakt": "Zugeordnet wird bei hoechstens 1 % Abweichung vom Planetenton; bei Nachbartoenen gewinnt die geringste Abweichung. Einen einzelnen festen Wert je Schale gibt es nicht.",
+      "quelle": "Messseite ('eine Toleranz bis maximal 1%'); Frank 03.10.2026 ('wir haben eine 1%-Toleranz'); Evidence-Dokument Zeile 33 und 100; knowledge_atoms ausmessen-2026-09-29-09"
+    },
+    {
+      "fakt": "Die vorhandenen Toene einer Schale werden ausgemessen und zugeordnet; niemand veraendert die Schale auf einen Zielwert hin.",
+      "quelle": "ADR-0006 (shop-tuner-dokumentation/sound-spirit-ops/docs/adr/0006-planetenton-sprachregel.md); knowledge_atoms ausmessen-2026-09-29-02"
+    },
+    {
+      "fakt": "Hz-Werte nur auf Seiten einzelner Schalen, nie in Set-Texten und nie bei tibetischen Schalen.",
+      "quelle": "pl-sets/CLAUDE.md Zeile 14; zentrale/docs/glossare/GLOSSAR.md Eintrag Hz"
+    }
+  ],
+  "gesperrt": [
+    {
+      "muster": "exakt\\w*\\s+(frequenz|ton|hz|ausgemessen)",
+      "grund": "Es gibt keine exakte Frequenz, nur eine Zuordnung mit hoechstens 1 % Abweichung.",
+      "stattdessen": "ausgemessen und bei hoechstens 1 % Abweichung einem Planetenton zugeordnet"
+    },
+    {
+      "muster": "\\bgestimmt\\b",
+      "grund": "Schalen werden nicht gestimmt (ADR-0006).",
+      "stattdessen": "ausgemessen und zugeordnet"
+    },
+    {
+      "muster": "\\bgrundt(o|oe|ö)n\\w*",
+      "grund": "Frank 03.10.2026: 'Grundton ist Quatsch'. Der Begriff traegt das Einton-Modell und ist bis zur Fachrunde (Frank + Christina, ab 05.10.2026) gesperrt.",
+      "stattdessen": "tiefster Ton"
+    },
+    {
+      "muster": "(st(ae|ä)rkste|lauteste)\\w*\\s+(ton|peak)",
+      "grund": "Falsche interne Definition (Glossar, Textpipeline); der lauteste Ton ist oft ein hoeherer.",
+      "stattdessen": "tiefster Ton"
+    },
+    {
+      "muster": "(hat|haben|besitzt|besitzen)\\s+(eine|die)\\s+(eigene\\s+|einzige\\s+|bestimmte\\s+|feste\\s+)?frequenz|(eigene|einzige|bestimmte|feste)\\s+frequenz|auf\\s+eine\\s+frequenz",
+      "grund": "Einton-Modell: 'Jede Klangschale hat eine eigene Frequenz' ist falsch, sie hat mehrere Toene.",
+      "stattdessen": "mehrere Toene, massgeblich der tiefste Ton und der erste Ton darueber"
+    },
+    {
+      "muster": "einem\\s+(bestimmten\\s+)?ton\\s+zugeordnet",
+      "grund": "Zugeordnet werden die Toene der Schale, nicht die Schale einem Ton.",
+      "stattdessen": "ihre Toene werden Planetentoenen zugeordnet"
+    }
+  ],
+  "offen_fachrunde_05_10_2026": [
+    "Welcher Begriff oeffentlich fuer den zweiten Ton gilt: 'erster Oberton' (Messseite, Frank) oder 'erster hoeherer Ton' (Blog).",
+    "Ob der zweite Oberton weiter ausgezeichnet wird (zwei oder drei zugeordnete Toene).",
+    "25, 26 oder 27 Planetentoene auf den Seiten.",
+    "Welche Messung gilt, wenn Sparks und Shop-Aufnahme verschiedene tiefste Toene liefern."
+  ],
+  "hinweis_datenmodell": "wissensgraph.beziehungen 'hat_frequenz' verweist auf den Cousto-Planetenton (z. B. Neptun 211,44 Hz), nicht auf gemessene Toene einer Schale. Gemessene Toene liegen im Weboffice (Zusatzfeld 01 tiefster, 02 mittlerer, 03 hoechster Ton) und im AFS-Feld Tonhoehe, nicht im Graphen (gemessen 03.10.2026: 27 hat_frequenz-Beziehungen fuer 40 Planetenschalen-Konzepte, hoechstens 2 je Konzept, 0 Attribute mit Tonbegriffen)."
+}
