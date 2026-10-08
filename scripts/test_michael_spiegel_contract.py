@@ -79,6 +79,7 @@ class Statisch(unittest.TestCase):
         self.assertFalse(quelle["with"]["persist-credentials"])
         self.assertEqual(ziel["with"]["path"], "ziel")
         self.assertEqual(ziel["with"]["token"], "${{ secrets.spiegel_token }}")
+        self.assertEqual(ziel["with"]["fetch-depth"], 0)
 
     def test_actions_auf_volle_sha_gepinnt(self):
         for uses in re.findall(r"uses:\s*(\S+)", self.text):
@@ -303,6 +304,16 @@ else:
         self.assertTrue((self.ziel / "eingang/test-quelle/LIES-MICH.md").exists())
         self.assertTrue((self.ziel / "eingang/test-quelle/neuer-auftrag.md").exists())
         self.assertEqual((self.tmp / "calls").read_text().count("pr create "), 2)
+
+    def test_fortgeschrittener_zielzweig_bleibt_erhalten_ohne_pr_duplikat(self):
+        self.transfer()
+        (self.seed / "anderer-bereich.md").write_text("Andere Arbeit", encoding="utf-8")
+        self.git(self.seed, "add", "anderer-bereich.md")
+        self.git(self.seed, "commit", "-m", "docs: other area")
+        self.git(self.seed, "push", "origin", "main")
+        self.transfer()
+        self.assertEqual((self.ziel / "anderer-bereich.md").read_text(), "Andere Arbeit")
+        self.assertEqual((self.tmp / "calls").read_text().count("pr create "), 1)
 
     def test_trockenlauf_ohne_push_und_pr(self):
         self.env["TROCKENLAUF"] = "true"
