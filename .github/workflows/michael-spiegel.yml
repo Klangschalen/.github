@@ -7,8 +7,8 @@
 # eine Mail an Michael verlinkte zwei Dateien in schnittstellen-doku - einem Repository, in dem
 # er kein Mitarbeiter ist. Er haette zwei tote Links bekommen.
 #
-# Grundsatz: Der Merge auf den Default-Zweig des Quell-Repositorys IST die Freigabe. Danach
-# entscheidet niemand ein zweites Mal. Der Ablauf kopiert NUR den Ordner `uebergabe-michael/`
+# Grundsatz: Der Merge auf den Default-Zweig des Quell-Repositorys IST die Freigabe. Die Zielregeln gelten weiterhin;
+# der Spiegel stellt deshalb einen Ziel-PR bereit und merged ihn niemals selbst. Der Ablauf kopiert NUR den Ordner `uebergabe-michael/`
 # (oder den per Input genannten Ordner), niemals das uebrige Repository, und loescht im Ziel
 # nie etwas. Interne Akten, Schluessel und Personendaten werden fail-closed abgewiesen: ein
 # einziger verdaechtiger Treffer, und es wird gar nichts kopiert.
@@ -54,7 +54,7 @@ on:
         default: false
     secrets:
       spiegel_token:
-        description: "Fine-grained PAT mit Contents: Read and write NUR auf das Ziel-Repository"
+        description: "Fine-grained PAT mit Contents und Pull requests: Read and write NUR auf das Ziel-Repository"
         required: true
 
 permissions:
@@ -65,6 +65,9 @@ jobs:
     name: michael-spiegel
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    concurrency:
+      group: michael-spiegel-${{ inputs.ziel_repository }}-${{ github.repository }}
+      cancel-in-progress: false
     steps:
       - name: Quelle auf dem exakten Commit auschecken
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,6 +84,30 @@ jobs:
           path: ziel
           token: ${{ secrets.spiegel_token }}
           persist-credentials: true
+
+      - name: Vorhandenen Uebertragungszweig wiederverwenden
+        id: vorbereiten
+        shell: bash
+        env:
+          QUELL_REPO: ${{ github.repository }}
+          QUELL_SHA: ${{ github.sha }}
+          ZIEL_ZWEIG: ${{ inputs.ziel_zweig }}
+        run: |
+          set -euo pipefail
+          cd ziel
+          git config user.name "sound-spirit-spiegel"
+          git config user.email "team@sound-spirit.de"
+          zweig="michael-spiegel/${QUELL_REPO##*/}/${QUELL_SHA}"
+          echo "zweig=${zweig}" >> "$GITHUB_OUTPUT"
+          git fetch origin "refs/heads/$ZIEL_ZWEIG:refs/remotes/origin/$ZIEL_ZWEIG"
+          if git ls-remote --exit-code --heads origin "$zweig" >/dev/null; then
+            git fetch origin "refs/heads/$zweig:refs/remotes/origin/$zweig"
+            git checkout -B "$zweig" "origin/$zweig"
+            # Kein Force-Push: Konflikte stoppen vor Push und PR.
+            git merge --no-edit "origin/$ZIEL_ZWEIG"
+          else
+            git checkout -b "$zweig" "origin/$ZIEL_ZWEIG"
+          fi
 
       - name: Uebergabe-Dateien pruefen und kopieren
         id: kopie
@@ -144,6 +171,27 @@ jobs:
           fi
 
           mkdir -p "$ZIEL"
+          unveraendert=1
+          if [ ! -f "$ZIEL/QUELLE.txt" ] ||
+             ! grep -Fxq "Gespiegelt aus: https://github.com/${QUELL_REPO}" "$ZIEL/QUELLE.txt" ||
+             ! grep -Fxq "Commit: ${QUELL_SHA}" "$ZIEL/QUELLE.txt" ||
+             ! grep -Fxq "Ordner: ${QUELL_ORDNER}" "$ZIEL/QUELLE.txt" ||
+             ! grep -Fxq "Dateien: ${anzahl}" "$ZIEL/QUELLE.txt"; then
+            unveraendert=0
+          fi
+          while IFS= read -r -d '' datei; do
+            rel="${datei#"$QUELLE"/}"
+            [ "$rel" = "README.md" ] && continue
+            if ! cmp -s "$datei" "$ZIEL/$rel"; then
+              unveraendert=0
+            fi
+          done < <(find "$QUELLE" -type f -print0 | sort -z)
+          if [ "$unveraendert" -eq 1 ]; then
+            echo "Quelle und Inhalte unveraendert - QUELLE.txt bleibt unveraendert."
+            echo "dateien=${anzahl}" >> "${GITHUB_OUTPUT:-/dev/null}"
+            echo "geaendert=0" >> "${GITHUB_OUTPUT:-/dev/null}"
+            exit 0
+          fi
           if [ ! -f "$ZIEL_WURZEL/README.md" ]; then
             cat > "$ZIEL_WURZEL/README.md" <<'EOF_README'
           # Eingang: Übergaben aus internen Sound-Spirit-Repositories
@@ -175,10 +223,11 @@ jobs:
             echo "Dateien: ${anzahl}"
           } > "$ZIEL/QUELLE.txt"
           echo "dateien=${anzahl}" >> "${GITHUB_OUTPUT:-/dev/null}"
+          echo "geaendert=1" >> "${GITHUB_OUTPUT:-/dev/null}"
           echo "Gespiegelt: ${anzahl} Datei(en) nach ${ZIEL}"
           # --- SPIEGEL-SKRIPT-ENDE ---
 
-      - name: Im Ziel committen und pushen
+      - name: Uebertragung als Pull Request bereitstellen
         if: steps.kopie.outputs.dateien != '0' && steps.kopie.outputs.dateien != ''
         shell: bash
         env:
@@ -186,23 +235,44 @@ jobs:
           QUELL_SHA: ${{ github.sha }}
           QUELL_ORDNER: ${{ inputs.quell_ordner }}
           ZIEL_ZWEIG: ${{ inputs.ziel_zweig }}
+          ZIEL_ORDNER: ${{ inputs.ziel_ordner }}
           TROCKENLAUF: ${{ inputs.trockenlauf }}
           ANZAHL: ${{ steps.kopie.outputs.dateien }}
+          SPIEGEL_ZWEIG: ${{ steps.vorbereiten.outputs.zweig }}
+          ZIEL_REPO: ${{ inputs.ziel_repository }}
+          GH_TOKEN: ${{ secrets.spiegel_token }}
         run: |
           set -euo pipefail
           cd ziel
-          git config user.name "sound-spirit-spiegel"
-          git config user.email "team@sound-spirit.de"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "Keine Aenderung gegenueber dem Ziel - kein Commit."
-            exit 0
+          # Nur den freigegebenen Eingang stagen; keine fremden Ziel-Dateien.
+          git add -- "$ZIEL_ORDNER"
+          if ! git diff --cached --quiet; then
+            git commit -q -m "chore(spiegel): ${QUELL_REPO} ${QUELL_SHA:0:7} - ${ANZAHL} Datei(en) aus ${QUELL_ORDNER}"
           fi
-          git commit -q -m "chore(spiegel): ${QUELL_REPO} ${QUELL_SHA:0:7} - ${ANZAHL} Datei(en) aus ${QUELL_ORDNER}"
-          git --no-pager show --stat --oneline HEAD | head -40
           if [ "${TROCKENLAUF}" = "true" ]; then
-            echo "TROCKENLAUF: Commit erzeugt, aber nicht gepusht."
+            echo "TROCKENLAUF: lokal geprueft, kein Push und kein Pull Request."
             exit 0
           fi
-          git push origin "HEAD:${ZIEL_ZWEIG}"
-          echo "Gepusht nach ${ZIEL_ZWEIG}."
+          if git diff --quiet "origin/$ZIEL_ZWEIG" HEAD; then
+            echo "Zielzweig hat bereits diesen Stand - kein Commit und kein Pull Request."
+            exit 0
+          fi
+          git push origin "HEAD:${SPIEGEL_ZWEIG}"
+          vorhandene="$(gh pr list --repo "$ZIEL_REPO" --base "$ZIEL_ZWEIG" --head "$SPIEGEL_ZWEIG" --state open --json url --jq '.[0].url // empty')"
+          if [ -n "$vorhandene" ]; then
+            echo "Vorhandener Uebertragungs-PR: $vorhandene"
+          else
+            body="${RUNNER_TEMP}/michael-spiegel-pr.md"
+            {
+              echo "Freigegebene Quelldateien: https://github.com/${QUELL_REPO}/tree/${QUELL_SHA}/${QUELL_ORDNER}"
+              echo
+              echo "Quell-Commit: ${QUELL_SHA}"
+              echo "Dateien: ${ANZAHL}. QUELLE.txt bindet die Kopie an diesen Commit."
+              echo
+              echo "Bereit zur Zielpruefung. Dieser PR ist noch kein Zustellbeleg."
+              echo "Keine automatische Zusammenfuehrung; keine Dateien geloescht."
+            } > "$body"
+            gh pr create --repo "$ZIEL_REPO" --base "$ZIEL_ZWEIG" --head "$SPIEGEL_ZWEIG" --title "chore(spiegel): ${QUELL_REPO} ${QUELL_SHA:0:7}" --body-file "$body"
+          fi
+          echo "Bereit zur Zielpruefung - Zustellung erst nach Merge und Kopie-/Commit-Pruefung."
+
