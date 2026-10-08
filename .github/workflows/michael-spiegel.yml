@@ -84,6 +84,7 @@ jobs:
           path: ziel
           token: ${{ secrets.spiegel_token }}
           persist-credentials: true
+          fetch-depth: 0
 
       - name: Vorhandenen Uebertragungszweig wiederverwenden
         id: vorbereiten
