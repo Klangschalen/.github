@@ -225,19 +225,20 @@ sichtbar und werden kontrolliert über Pull Requests behoben.
 Trägt den Ordner `uebergabe-michael/` eines internen Repositorys automatisch nach
 `Klangschalen/michael-arbeitsuebergabe` unter `eingang/<quell-repository>/`. Anlass
 (05.09.2026): Übergaben für Michael entstehen in Repositories, in denen er kein Mitarbeiter
-ist; eine Mail an ihn verlinkte zwei solche Dateien. Der Spiegel ersetzt das Weiterreichen
-von Hand.
+ist; eine Mail an ihn verlinkte zwei solche Dateien. Der Spiegel stellt eine Kopie als Pull Request im Ziel bereit. Die Zielregeln gelten
+weiter. Ein erfolgreicher Lauf mit offenem PR beweist noch keine Zustellung.
 
 Grundsätze:
 
-1. **Der Merge auf den Default-Zweig ist die Freigabe.** Es gibt keine zweite Entscheidung.
+1. **Der Merge auf den Default-Zweig gibt die Quelldateien frei.** Der Ziel-PR
+   respektiert vorhandene Schutzregeln. Kein automatischer Merge oder Ruleset-Bypass.
 2. **Nur der Ordner `uebergabe-michael/`** wird kopiert, nie das übrige Repository.
 3. **Im Ziel wird nie gelöscht.** Was Michael einmal bekommen hat, bleibt.
 4. **Fail-closed:** Zugangsdaten (`.env`, Schlüssel), interne Akten (`arbeitsjournal`,
    `evidenzakte`) oder Personendaten (`kunden`, `adress`) im Namen, schlüsselähnlicher
    Inhalt oder Dateien über 10 MB weisen den ganzen Lauf ab. Es wird dann nichts kopiert.
 5. **Token nur in der Quelle.** Das Secret `MICHAEL_SPIEGEL_TOKEN` (fine-grained PAT,
-   Contents: Read and write, ausschließlich auf `michael-arbeitsuebergabe`) liegt im
+   Contents und Pull requests: Read and write, ausschließlich auf `michael-arbeitsuebergabe`) liegt im
    Quell-Repository oder als Org-Secret für ausgewählte interne Repositories. Es darf nie
    in einem Repository liegen, in dem Michael Schreibrecht hat: ein Workflow dort könnte
    es auslesen. Deshalb schreibt die Quelle ins Ziel, nie umgekehrt.
@@ -285,9 +286,33 @@ nie auf das Quell-Repository.
 
 ### Erster Lauf
 
-Über `workflow_dispatch` mit `trockenlauf: true`. Der Lauf zeigt Commit und Dateiliste,
-pusht aber nicht. Erst danach ein echter Lauf (Merge in `uebergabe-michael/` oder
-`trockenlauf: false`).
+Über `workflow_dispatch` mit `trockenlauf: true`. Der Lauf prüft und erzeugt nur lokal; er pusht nichts und erstellt keinen PR.
+Erst danach ein echter Lauf (Merge in `uebergabe-michael/` oder `trockenlauf: false`).
+Der echte Lauf pusht ausschließlich nach `michael-spiegel/<repo>/<quell-sha>` und
+verwendet den vorhandenen offenen Ziel-PR wieder oder erstellt genau einen.
+Er merged nie selbst. Nach dem Ziel-Merge müssen Zielkopie, `QUELLE.txt` und exakter
+Quell-Commit gemeinsam geprüft werden; erst das belegt die Zustellung.
+
+### Wiederholung und Fehlerstopps
+
+Vor jeder Kopie werden alle Quelldateien sicher geprüft. Stimmen Quell-Repository,
+Quellordner, Commit, Dateianzahl und jede Datei bytegenau überein, bleibt auch die
+Uhrzeit in `QUELLE.txt` unverändert. Eine Wiederholung erzeugt keinen neuen Commit
+oder zweiten PR. Ein bereits gemergter, unveränderter Stand benötigt keinen PR.
+Ein neuer Quell-Commit aktualisiert die Herkunft auch bei gleichen Dateiinhalten.
+Alte Ziel-Dateien, die in der Quelle fehlen, bleiben erhalten.
+
+Ein vorhandener Uebertragungszweig wird ohne Force-Push mit dem aktuellen Zielzweig
+zusammengeführt. Konflikte oder GitHub-Abfragefehler stoppen den Lauf. Der fehlende
+Zugang in `quality-system` muss weiterhin administrativ bereitgestellt werden;
+der Workflow liest oder ersetzt keinen Geheimwert.
+
+### Bestehende Caller aktualisieren
+
+`quality-system` und `schnittstellen-doku` pinnen noch die frühere Version.
+Nach Review und Merge dieses zentralen Fixes müssen ihre `uses:`-Zeilen auf den
+**tatsächlichen 40-stelligen Merge-Commit** zeigen. Vorher keinen erfundenen Pin
+verwenden. Danach Zugang im Trockenlauf und echten Ziel-PR prüfen.
 
 ## michael-spiegel-contract.yml
 
@@ -319,3 +344,4 @@ jobs:
     with:
       warn_only: true
 ```
+
