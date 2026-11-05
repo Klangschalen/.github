@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Zugangsdaten: jede Datei, deren Name mit .env beginnt (auch Sicherungskopien)
+.env*
+!.env.example
+!.env.sample
+!.env.template
+!.env.dist
